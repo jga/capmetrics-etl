@@ -1,5 +1,4 @@
 include README.rst
 include LICENSE
-include setup.cfg
 recursive-include capmetricsetl/templates *
 recursive-exclude test *

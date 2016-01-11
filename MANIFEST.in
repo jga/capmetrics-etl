@@ -1,4 +1,4 @@
 include README.rst
 include LICENSE
-recursive-include capmetricsetl/templates *
+recursive-include capmetrics-etl/templates *
 recursive-exclude test *

@@ -1,5 +1,5 @@
-*********
-capmetricsetl
-*********
+==============
+capmetrics-etl
+==============
 
-ETL from CMTA Excel files to database for capmetrics website
+Extract-Transform-Load for CSV and Excel files from Austin's Capital Metro Transportation Authority.

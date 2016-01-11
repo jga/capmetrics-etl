@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CapMetrics</title>
+    <link href='https://fonts.googleapis.com/css?family=Lato' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pure/0.6.0/pure-min.css">
+    <link rel="stylesheet" href="http://yui.yahooapis.com/pure/0.6.0/grids-responsive-min.css">
+    <link rel="stylesheet" href="side-menu.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/nvd3/1.7.0/nv.d3.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.5/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/nvd3/1.7.0/nv.d3.js"></script>
+    <!-- <script src="Chart.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/c3/0.4.9/c3.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/c3/0.4.9/c3.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/chartist.js/latest/chartist.min.css">
+    <script src="https://cdn.jsdelivr.net/chartist.js/latest/chartist.min.js"></script> -->
+    <style>
+        body {font-family: 'Lato', Arial, Helvetica, sans-serif}
+        .centered {text-align:center}
+        .pure-g {font-family: 'Lato', Arial, Helvetica, sans-serif}
+        h1, h2, h3 {font-family: 'Lato', Arial, Helvetica, sans-serif;}
+        h2, h3 {color: #443322;}
+        .pure-g > div {
+            -webkit-box-sizing: border-box;
+            -moz-box-sizing: border-box;
+            box-sizing: border-box;
+        }
+        .left-box {
+            padding-left: 10px;
+        }
+        .route-link {margin-left: 8px; position:relative; top: -4px; font-size: 16px;}
+        .viz svg{max-height:250px; max-width: 500px;}
+    </style>
+</head>
+<body>
+
+<div id="layout">
+    <a href="#menu" id="menuLink" class="menu-link">
+        <!-- Hamburger icon -->
+        <span></span>
+    </a>
+
+    <div id="menu">
+        <div id="routes" class="pure-menu">
+            <a class="pure-menu-heading" href="#">Routes</a>
+            <ul class="pure-menu-list">
+            </ul>
+        </div>
+    </div>
+
+    <div id="main">
+        <div class="header">
+            <h1 id="top">CapMetrics <span style='color:#e1e1e1; margin-left: 6px;'>0.1</span></h1>
+        </div>
+        <div class="content">
+            <div id="visualizations"></div>
+        </div>
+    </div>
+</div>
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
+<script>
+    //JSON data
+    var vizData = {{viz_data}};
+</script>
+<script>
+    //nvd3 handler
+    function Nvd3Appender(version, vizHookIdentifier, chartGroup){
+        var chartData;
+        var chartLabels;
+        var coupling;
+        var coupledValues = [];
+        var seriesColor = '#143DE0';
+        if (version === 'weekday') {
+            chartLabels = chartGroup.weekday.labels;
+            chartData = chartGroup.weekday.series;
+        }
+        if (version === 'saturday'){
+            chartLabels = chartGroup.saturday.labels;
+            chartData = chartGroup.saturday.series;
+            seriesColor = '#10B526'
+        }
+        if (version === 'sunday'){
+            chartLabels = chartGroup.sunday.labels;
+            chartData = chartGroup.sunday.series;
+            seriesColor = '#54CC64'
+        }
+        for (var i = 0; i < chartData.length; i++){
+            coupling = {
+                "value": chartData[i],
+                "label": chartLabels[i],
+                "color": seriesColor
+            };
+            coupledValues.push(coupling);
+        }
+        var data = [{
+            key: chartGroup.serviceNumber,
+            values: coupledValues
+        }];
+        nv.addGraph(function() {
+            var chart = nv.models.discreteBarChart()
+                    .x(function(d) { return d.label })
+                    .y(function(d) { return d.value })
+                    .showYAxis(true)
+                    .showXAxis(true);
+            chart.yAxis.tickFormat(d3.format(',0f'));
+            d3.select(vizHookIdentifier+' svg').datum(data).call(chart);
+            nv.utils.windowResize(function() {chart.update()});
+            return chart;
+        });
+
+//        nv.addGraph(function() {
+//            var chart = nv.models.lineChart()
+//                    .margin({left: 100})  //Adjust chart margins to give the x-axis some breathing room.
+//                    .useInteractiveGuideline(false)  //We want nice looking tooltips and a guideline!
+//                    .showLegend(false)       //Show the legend, allowing users to turn on/off line series.
+//                    .showYAxis(true)
+//                    .showXAxis(true);
+//            chart.xAxis.tickValues(chartLabels).tickFormat(d3.format(',r'));
+//            d3.select(vizHookIdentifier+' svg').datum(data).call(chart);
+//            nv.utils.windowResize(function() {chart.update()});
+//            return chart;
+//        });
+    }
+
+    // Chart.js handler
+    function ChartAppender(version, identifier, chartGroup){
+        var ctx = document.getElementById(identifier).getContext("2d");
+        var chartData;
+        var chartLabels;
+        if (version === 'weekday') {
+            chartLabels = chartGroup.weekday.labels;
+            chartData = chartGroup.weekday.series;
+        }
+        if (version === 'saturday'){
+            chartLabels = chartGroup.saturday.labels;
+            chartData = chartGroup.saturday.series;
+        }
+        if (version === 'sunday'){
+            chartLabels = chartGroup.sunday.labels;
+            chartData = chartGroup.sunday.series;
+        }
+
+        var data = {
+            labels: chartLabels,
+            datasets: [{
+                label: "Route",
+                fillColor: "rgba(220,220,220,0.2)",
+                strokeColor: "rgba(220,220,220,1)",
+                pointColor: "rgba(220,220,220,1)",
+                pointStrokeColor: "#fff",
+                pointHighlightFill: "#fff",
+                pointHighlightStroke: "rgba(220,220,220,1)",
+                data: chartData
+            }]
+        };
+        var options = {};
+        var lineChart = new Chart(ctx).Line(data, options);
+    }
+
+    // C3 handler
+    function C3ChartAppender(version, vizHookSelector, chartGroup){
+        var series;
+        var categories;
+        var columns;
+        if (version === 'weekday') {
+            categories = chartGroup.weekday.labels;
+            series = chartGroup.weekday.series;
+        }
+        if (version === 'saturday'){
+            categories = chartGroup.saturday.labels;
+            series = chartGroup.saturday.series;
+        }
+        if (version === 'sunday'){
+            categories = chartGroup.sunday.labels;
+            series = chartGroup.sunday.series;
+        }
+        columns = [];
+        columns.push(chartGroup.serviceName);
+        for (var i = 0; i < series.length; i++){
+            columns.push(series[i]);
+        }
+        var config = {
+            bindto: vizHookSelector,
+            data: {
+                columns: [columns]
+            },
+            axis: {
+                x: {
+                    type: 'category',
+                    categories: categories
+                }
+            }
+        };
+        //console.log(JSON.stringify(config));
+        var chart = c3.generate(config);
+    }
+    //Generate Visualizations
+    $.each(vizData, function(index, chartGroup){
+        var serviceNumber = chartGroup.serviceNumber;
+        var serviceName = chartGroup.serviceName;
+        // Create the route grouping div
+        var groupIdentifier = 'service-' + serviceNumber;
+        $('#visualizations').append("<div id='" + groupIdentifier + "'><h2>" + serviceName + "<span class='route-link'>(<a href='#top' style='display:inline'>top<\/a>)<\/span><\/h2><\/div>");
+        // Create menu link
+        var menuLink = '<li class="pure-menu-item"><a href="#' + groupIdentifier + '" class="pure-menu-link">' + serviceNumber + '<\/a><\/li>'
+        $('.pure-menu-list').first().append(menuLink);
+        // Create chart for each day-of-week grain
+        var versions = ['weekday', 'saturday', 'sunday'];
+        for (var i = 0; i < versions.length; i++){
+            var version = versions[i];
+            var identifier = 'service-' + serviceNumber + '-' + version;
+            var headerText = version.charAt(0).toUpperCase() + version.slice(1)
+            $('#'+groupIdentifier).append("<h3 style='padding-left:20px;'>" + headerText + "</h3>");
+            $('#'+groupIdentifier).append("<div id='" + identifier + "' class='viz'><svg><\/svg><\/div>");
+            //$('#'+groupIdentifier).append("<canvas id='" + identifier + "' width='400' height='200'><\/canvas>");
+            var vizHookSelector = '#' + identifier;
+            //ChartAppender(version, vizHookSelector, chartGroup);
+            Nvd3Appender(version, vizHookSelector, chartGroup);
+            //ChartAppender(version, identifier, chartGroup);
+        }
+    });
+</script>
+<script>
+(function (window, document) {
+
+    var layout   = document.getElementById('layout'),
+        menu     = document.getElementById('menu'),
+        menuLink = document.getElementById('menuLink');
+
+    function toggleClass(element, className) {
+        var classes = element.className.split(/\s+/),
+            length = classes.length,
+            i = 0;
+
+        for(; i < length; i++) {
+          if (classes[i] === className) {
+            classes.splice(i, 1);
+            break;
+          }
+        }
+        // The className is not found
+        if (length === classes.length) {
+            classes.push(className);
+        }
+
+        element.className = classes.join(' ');
+    }
+
+    menuLink.onclick = function (e) {
+        var active = 'active';
+
+        e.preventDefault();
+        toggleClass(layout, active);
+        toggleClass(menu, active);
+        toggleClass(menuLink, active);
+    };
+
+}(this, this.document));
+</script>
+</body>
+</html>

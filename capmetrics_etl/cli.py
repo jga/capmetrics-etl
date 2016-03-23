@@ -1,5 +1,5 @@
 import click
-import etl
+from . import etl
 
 
 @click.command()

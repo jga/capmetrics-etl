@@ -5,70 +5,13 @@ import sqlalchemy
 import xlrd
 
 
-class ServiceName(object):
-    def __init__(self, name=None):
-        self.name = name
+def process_route_directory(sheet):
+    pass
 
 
-class ServiceNumber(object):
-    def __init__(self, number=None):
-        self.number = number
-
-
-class ServiceInfo:
-    def __init__(self, name=None, number=None):
-        self.name = name
-        self.number = number
-
-    def full_name(self):
-        empty = True
-        full_name = ''
-        if self.number:
-            full_name.join((' ', str(self.number)),)
-            empty = False
-        if self.name:
-            full_name.join((' ', self.name,))
-            empty = False
-        if empty:
-            return ''.join('Transit Service Info')
-        else:
-            return ''.join(('Transit Service Info for ', full_name,))
-
-    #def __repr__(self):
-    #    return self.full_name()
-
-
-class ChartistBarVisualization(object):
-
-    def __init__(self, title=None, labels=None, series=None):
-        self.title = title
-        self.labels = labels
-        self.series = series
-
-
-class Ridership(object):
-    """
-    A datetime is necessary for ordering and sorting in visualizations. If the
-    actual temporal object is not a datetime, then by convention we provide the
-    time of the temporal object starts at.
-
-    The temporal label provides support for alternative naming of a datetime.
-    For example, it might be useful to indicate that a datetime's result is
-    are actually representative of a season, or a month, or a
-    """
-    def __init__(self, dt, service_number=None, service_name=None, result=None, temporal_label=None, id=None):
-        self.id = id
-        self.datetime = dt
-        self.service_number = service_number
-        self.service_name = service_name
-        self.result = result
-        self.temporal_label = temporal_label
-
-    # def __repr__(self):
-    #     if self.temporal_label:
-    #         return self.temporal_label
-    #     return ''.join((self.datetime, ' ', self.result,))
-
+def extract(file_location):
+    excel_book = xlrd.open_workbook(filename=file_location)
+    excel_worksheet = excel_book.sheet_by_index()
 
 class RidershipEncoder(json.JSONEncoder):
     def default(self, o):
@@ -192,12 +135,3 @@ def to_route_charts(sheet, opt):
         #with open('/Users/jga/dev/cmx-dev/ridership_visualization.json', 'w') as outfile:
             #json.dump(charts, outfile, indent=2)
             #json.dump(charts, outfile, cls=ChartistBarVisualizationEncoder, indent=2)
-
-
-
-def update_routes():
-    pass
-
-
-def update_modes():
-    pass

@@ -19,7 +19,7 @@ setup(
     description="ETL for CapMetro raw data.",
     entry_points={
         'console_scripts': [
-            'etl=capmetrics-etl.cli:run',
+            'capmetrics=capmetrics_etl.cli:run',
         ],
     },
     install_requires=['click', 'pytz', 'sqlalchemy', 'xlrd'],
@@ -28,10 +28,10 @@ setup(
     long_description=get_readme(),
     name='capmetrics-etl',
     package_data={
-        'capmetrics-etl': ['templates/*.html'],
+        'capmetrics_etl': ['templates/*.html'],
     },
-    packages=find_packages(include=['capmetrics-etl', 'capmetrics-etl.*'],
-                           exclude=['test', 'test.*']),
+    packages=find_packages(include=['capmetrics_etl', 'capmetrics_etl.*'],
+                           exclude=['tests', 'tests.*']),
     platforms=['any'],
     url='https://github.com/jga/capmetrics-etl',
     version='0.1.0'

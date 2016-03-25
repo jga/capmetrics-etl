@@ -103,6 +103,9 @@ Check for the presence of the six worksheets from which data is extracted.
 
 Check for first column with route numbers in the 3 daily ridership worksheets.
 
+Check for second column with route names in the 3 daily ridership worksheets.
+
+Check for at least one ridership data column in all 6 ridership data worksheets.
 
 
 .. toctree::

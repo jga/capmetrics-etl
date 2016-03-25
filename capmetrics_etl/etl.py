@@ -1,12 +1,49 @@
-import json
 import copy
+import json
 import math
+import re
 import sqlalchemy
 import xlrd
 
 
-def process_route_directory(sheet):
-    pass
+def get_season_and_year(period):
+    if isinstance(period, str):
+        period = period.lower()
+        regex_pattern = re.compile(r'(summer|fall|winter|spring) +(\d\d\d\d)')
+        result = regex_pattern.match(period)
+        if result:
+            return result.group(1), result.group(2)
+    return None, None
+
+
+def get_route_info(file_location, worksheet_name):
+    result = {
+        'numbers_available': False,
+        'names_available': False,
+        'route_numbers': [],
+        'route_names': []
+    }
+    excel_book = xlrd.open_workbook(filename=file_location)
+    worksheet = excel_book.sheet_by_name(worksheet_name)
+    first_column_cells = worksheet.col(0)
+    row_counter = 0
+    for cell in first_column_cells:
+        if cell.value == 'Route':
+            result['numbers_available'] = True
+            # check for route names
+            candidate_name_header_cell = worksheet.cell(row_counter, 1)
+            if candidate_name_header_cell.value == 'Route Name':
+                result['names_available'] = True
+        # check if cell is a number
+        elif cell.ctype == 2:
+            result['route_numbers'].append(str(int(cell.value)))
+            # try to get route name
+            candidate_route_name_cell = worksheet.cell(row_counter, 1)
+            # check if cell is text
+            if result['names_available'] and candidate_route_name_cell.ctype == 1:
+                result['route_names'].append(candidate_route_name_cell.value)
+        row_counter += 1
+    return result
 
 
 def extract(file_location):

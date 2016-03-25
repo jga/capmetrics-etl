@@ -3,6 +3,7 @@ Data quality assurance functions.
 """
 import xlrd
 from xlrd.biffh import XLRDError
+from capmetrics_etl import etl
 
 
 def check_worksheets(file_location):
@@ -45,32 +46,35 @@ def check_worksheets(file_location):
 
 
 def check_route_info(file_location, worksheet_name):
-    result = {
-        'numbers_available': False,
-        'names_available': False,
-        'route_numbers': [],
-        'route_names': []
-    }
+    route_info = etl.get_route_info(file_location, worksheet_name)
+    if route_info['numbers_available'] and route_info['names_available']:
+        if len(route_info['route_numbers']) == len(route_info['route_names']):
+            return True
+    return False
+
+
+def has_ridership_data_column(worksheet, floor=10):
+    for column_index in range(floor):
+        for row_index in range(floor):
+            cell = worksheet.cell(row_index, column_index)
+            season, year = etl.get_season_and_year(cell.value)
+            if season and year:
+                return True
+    return False
+
+
+def check_for_ridership_columns(file_location):
     excel_book = xlrd.open_workbook(filename=file_location)
-    worksheet = excel_book.sheet_by_name(worksheet_name)
-    first_column_cells = worksheet.col(0)
-    row_counter = 0
-    for cell in first_column_cells:
-        if cell.value == 'Route':
-            result['numbers_available'] = True
-            # check for route names
-            candidate_name_header_cell = worksheet.cell(row_counter, 1)
-            if candidate_name_header_cell.value == 'Route Name':
-                result['names_available'] = True
-        # check if cell is a number
-        elif cell.ctype == 2:
-            result['route_numbers'].append(str(int(cell.value)))
-            # try to get route name
-            candidate_route_name_cell = worksheet.cell(row_counter, 1)
-            # check if cell is text
-            if result['names_available'] and candidate_route_name_cell.ctype == 1:
-                result['route_names'].append(candidate_route_name_cell.value)
-        row_counter += 1
-    return result
-
-
+    worksheet_names = [
+        'Ridership by Route Weekday',
+        'Ridership by Route Saturday',
+        'Ridership by Route Sunday',
+        'Riders per Hour Weekday',
+        'Riders Hour Saturday',
+        'Riders per Hour Sunday'
+    ]
+    for worksheet_name in worksheet_names:
+        has_data = has_ridership_data_column(excel_book.sheet_by_name(worksheet_name))
+        if not has_data:
+            return False
+    return True

@@ -1,9 +1,54 @@
-import copy
+"""
+ETL module.
+"""
+import datetime
 import json
-import math
 import re
-import sqlalchemy
 import xlrd
+from xlrd.biffh import XLRDError
+from sqlalchemy.orm.exc import NoResultFound
+from .config import TIMEZONE
+from .models import Route
+
+
+
+def check_for_headers(cell, worksheet, row_counter, result):
+    if cell.value == 'Route':
+        result['numbers_available'] = True
+        # check for route names
+        candidate_name_header_cell = worksheet.cell(row_counter, 1)
+        if candidate_name_header_cell.value == 'Route Name':
+            result['names_available'] = True
+        # check for route names
+        candidate_name_header_cell = worksheet.cell(row_counter, 2)
+        if candidate_name_header_cell.value == 'Route Type':
+            result['types_available'] = True
+        return True
+    return False
+
+
+def extract_day_of_week(period_row, period_column, worksheet):
+    """
+    Extracts the day of week for a ridership data column be searching
+    for 'weekday' or 'saturday' or 'sunday' strings under a period header.
+
+    Args:
+        period_row: Row for the period header. The day of week should be under it.
+        period_column: Column for the period header.
+        worksheet: The worksheet where the search occurs.
+
+    Returns:
+        A string with the day of week if one present; ``None`` otherwise.
+    """
+    day_of_week = None
+    day_cell = worksheet.cell((period_row + 1), period_column)
+    if day_cell.ctype == 1:
+        day = day_cell.value.lower()
+        regex_pattern = re.compile(r'(weekday|saturday|sunday)')
+        result = regex_pattern.match(day)
+        if result:
+            return result.group(1)
+    return day_of_week
 
 
 def get_season_and_year(period):

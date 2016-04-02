@@ -3,7 +3,7 @@ Data quality assurance functions.
 """
 import xlrd
 from xlrd.biffh import XLRDError
-from capmetrics_etl import etl
+from capmetrics_etl import etl, config
 
 
 def check_worksheets(file_location):
@@ -26,14 +26,7 @@ def check_worksheets(file_location):
 
     """
     excel_book = xlrd.open_workbook(filename=file_location)
-    required_names = [
-        'Ridership by Route Weekday',
-        'Ridership by Route Saturday',
-        'Ridership by Route Sunday',
-        'Riders per Hour Weekday',
-        'Riders Hour Saturday',
-        'Riders per Hour Sunday'
-    ]
+    required_names = config.WORKSHEETS
     misses = list()
     for name in required_names:
         try:
@@ -47,10 +40,7 @@ def check_worksheets(file_location):
 
 def check_route_info(file_location, worksheet_name):
     route_info = etl.get_route_info(file_location, worksheet_name)
-    if route_info['numbers_available'] and route_info['names_available']:
-        if len(route_info['route_numbers']) == len(route_info['route_names']):
-            return True
-    return False
+    return True if len(route_info['routes']) >  0 else False
 
 
 def has_ridership_data_column(worksheet, floor=10):

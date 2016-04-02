@@ -3,13 +3,10 @@ from . import etl
 
 
 @click.command()
-@click.argument('job', default='all')
 @click.option('--test', default=False)
-def run(job, test):
+def run(test):
     if not test:
-        if job == 'all':
-            etl.update_routes()
-            etl.update_modes()
+        etl.run_excel_etl()
     else:
         click.echo('Capmetrics test.')
 

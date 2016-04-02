@@ -92,25 +92,37 @@ DailyRidership - route, day of week, period
 
 HourlyRidership - route, day of week, period
 
+ETL Tasks
+---------
+
 Data Quality
-------------
+............
 
 Given the absence of a reporting standard or specification by which the statistics file
 is developed, **capmetrics-etl** runs a series of 'sanity checks' to ensure that the
 data format expectations upon which its ETL procedures are based are actually in place.
 
-Check for the presence of the six worksheets from which data is extracted.
+Worksheet completeness: Check for the presence of the six worksheets from which data is extracted.
 
-Check for first column with route numbers in the 3 daily ridership worksheets.
+Route rows present: Check for at least one data point of route number and route name column
+in the 3 daily ridership worksheets.  We only check the first 3 since a daily
+route data point is necessary to have hourly data.
 
-Check for second column with route names in the 3 daily ridership worksheets.
 
-Check for at least one ridership data column in all 6 ridership data worksheets.
+Ridership columns presents: Check for at least one ridership data column in all 6 ridership data worksheets.
+
+Build and Update Route models
+.............................
+
+The application ingests the route number-name pairings and creates new route objects or updates
+the name and service type of existing ones.
+
 
 
 .. toctree::
    :maxdepth: 2
 
+   etl
    quality
 
 Indices and tables

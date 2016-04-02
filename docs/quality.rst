@@ -1,5 +1,5 @@
 Data Quality
 ============
 
-.. automodule:: quality
-    :members:
+.. automodule:: capmetrics_etl.quality
+   :members:

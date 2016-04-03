@@ -3,11 +3,15 @@ ETL module.
 """
 import datetime
 import json
+import pytz
 import re
+from sqlalchemy import create_engine
+from sqlalchemy import func
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm.exc import NoResultFound
 import xlrd
 from xlrd.biffh import XLRDError
-from sqlalchemy.orm.exc import NoResultFound
-from .models import Route
+from . import models
 
 
 def check_for_headers(cell, worksheet, row_counter, result):
@@ -23,6 +27,11 @@ def check_for_headers(cell, worksheet, row_counter, result):
             result['types_available'] = True
         return True
     return False
+
+
+def create_tables(configuration):
+    engine = create_engine(configuration['engine_url'])
+    models.Base.metadata.create_all(engine)
 
 
 def extract_day_of_week(period_row, period_column, worksheet):
@@ -120,23 +129,27 @@ def get_periods(worksheet, minimum_search=10):
 
 
 def deactivate_current_period(route_number, period, ridership_model, session):
-    route = session.query(Route).filter_by(route_number=route_number).one()
+    route = session.query(models.Route).filter_by(route_number=route_number).one()
     try:
         current_instance = session.query(ridership_model).\
                         filter_by(route_id=route.id, season=period['season'],
                                   year=period['year'], day_of_week=period['day_of_week'],
                                   current=True).one()
         current_instance.current = False
+        return True
     except NoResultFound:
-        pass
+        return False
 
 
 def handle_ridership_cell(route_number, period, ridership_cell,
-                          ridership_model, session, time_zone):
+                          ridership_model, session, time_zone, report=None):
     # check for a number cell
     if ridership_cell.ctype == 2:
-        deactivate_current_period(route_number, period, ridership_model, session)
-        route = session.query(Route).filter_by(route_number=route_number).one()
+        deactivation = deactivate_current_period(route_number, period,
+                                                 ridership_model, session)
+        if report and deactivation:
+            report['updates'] += report['updates']
+        route = session.query(models.Route).filter_by(route_number=route_number).one()
         new_ridership = ridership_model(route_id=route.id,
                                         current=True,
                                         day_of_week=period['day_of_week'],
@@ -145,9 +158,13 @@ def handle_ridership_cell(route_number, period, ridership_cell,
                                         ridership=ridership_cell.value,
                                         created_on=datetime.datetime.now(tz=time_zone))
         session.add(new_ridership)
+        if report:
+            report['creates'] += report['creates']
+    return report
 
 
-def parse_worksheet_ridership(worksheet, periods, ridership_model, session, time_zone):
+def parse_worksheet_ridership(worksheet, periods, ridership_model,
+                              session, time_zone, report=None):
     route_number_cells = worksheet.col(0)
     row_counter = 0
     # let's iterate down the rows
@@ -160,18 +177,29 @@ def parse_worksheet_ridership(worksheet, periods, ridership_model, session, time
                 try:
                     ridership_cell = worksheet.cell(row_counter, int(column))
                     handle_ridership_cell(route_number, period_data, ridership_cell,
-                                          ridership_model, session, time_zone)
+                                          ridership_model, session, time_zone, report)
                 except XLRDError:
                     pass
         row_counter += 1
 
 
-def update_ridership(file_location, worksheet_names, ridership_model, session):
+def update_ridership(file_location, worksheet_names, ridership_model, session, timezone):
+    etl_report = {
+        'updated_on': datetime.datetime.now(timezone),
+        'updates': 0,
+        'creates': 0,
+        'total_models': None
+    }
     for worksheet_name in worksheet_names:
         excel_book = xlrd.open_workbook(filename=file_location)
         worksheet = excel_book.sheet_by_name(worksheet_name)
         periods = get_periods(worksheet_name)
-        parse_worksheet_ridership(worksheet, periods, ridership_model, session)
+        parse_worksheet_ridership(worksheet, periods, ridership_model,
+                                  session, timezone, etl_report)
+    session.commit()
+    count = session.query(func.count(ridership_model.id))
+    etl_report['total_models'] = count
+    return etl_report
 
 
 def get_route_info(file_location, worksheet_name):
@@ -248,7 +276,7 @@ def merge_route_data(results):
     return merged_data
 
 
-def store_route(session, route_number, route_info):
+def store_route(session, route_number, route_info, report=None):
     """
     Creates or updates a route from passed information.
 
@@ -258,19 +286,24 @@ def store_route(session, route_number, route_info):
         session: An SQLAlchemy session.
         route_number (str): The digit-only label for a route number.
         route_info (dict): Contains route name and service type data.
+        report (dict): Optional dict for capturing ETL operations data.
     """
     try:
-        route = session.query(Route).filter_by(route_number=int(route_number)).one()
+        route = session.query(models.Route).filter_by(route_number=int(route_number)).one()
         route.route_name = route_info['route_name']
         route.service_type = route_info['service_type']
+        if report:
+            report['updates'] += report['updates']
     except NoResultFound:
-        new_route = Route(route_number=int(route_number),
-                          route_name=route_info['route_name'].upper(),
-                          service_type=route_info['service_type'].upper())
+        new_route = models.Route(route_number=int(route_number),
+                                 route_name=route_info['route_name'].upper(),
+                                 service_type=route_info['service_type'].upper())
         session.add(new_route)
+        if report:
+            report['creates'] += report['creates']
 
 
-def update_route_info(file_location, session, worksheets):
+def update_route_info(file_location, session, worksheets, timezone):
     """
     Saves latest route model information into database.
 
@@ -278,14 +311,64 @@ def update_route_info(file_location, session, worksheets):
         file_location (str): Location of Excel file with data.
         session: SQLAlchemy database session.
         worksheets (list): The string names of the worksheets to be searched for route info.
+        timezone: A pytz-generatez timezone info object.
+
+    Returns:
+        dict: A dict with report
     """
+    etl_report = {
+        'updated_on': datetime.datetime.now(timezone),
+        'updates': 0,
+        'creates': 0,
+        'total_models': None
+    }
     results = list()
     for worksheet in worksheets:
         route_info = get_route_info(file_location, worksheet)
         results.append(route_info)
     merged_data = merge_route_data(results)
     for route_number, route_info in merged_data.items():
-        store_route(session, route_number, route_info)
+        store_route(session, route_number, route_info, etl_report)
     session.commit()
+    count = session.query(func.count(models.Route.id))
+    etl_report['total_models'] = count
+    return etl_report
 
+
+def write_etl_report(combined_reports, timestamp):
+    report_file_path = 'capmetrics_etl_report_{0}.json'.format(timestamp)
+    with open(report_file_path, 'w') as outfile:
+        json.dump(combined_reports, outfile, indent=2)
+
+
+def run_excel_etl(configuration):
+    file_location = configuration['source']
+    timezone = pytz.timezone(configuration['timezone'])
+    daily_worksheets = configuration['daily_ridership_worksheets']
+    hourly_worksheets = configuration['hourly_ridership_worksheets']
+    engine = create_engine(configuration['engine_url'])
+    Session = sessionmaker()
+    Session.configure(bind=engine)
+    session = Session()
+    route_info_report = update_route_info(file_location,
+                                          session,
+                                          daily_worksheets,
+                                          timezone)
+    route_info_report['etl'] = 'route-info'
+    daily_ridership_report = update_ridership(file_location,
+                                              daily_worksheets,
+                                              models.DailyRidership,
+                                              session,
+                                              timezone)
+    daily_ridership_report['etl'] = 'daily-ridership'
+    hourly_ridership_report = update_ridership(file_location,
+                                               hourly_worksheets,
+                                               models.HourlyRidership,
+                                               session,
+                                               timezone)
+    hourly_ridership_report['etl'] = 'hourly-ridership'
+    combined_reports = [route_info_report, daily_ridership_report, hourly_ridership_report]
+    now = datetime.datetime.now(timezone)
+    timestamp = now.strftime("%m%d%Y")
+    return combined_reports, timestamp
 

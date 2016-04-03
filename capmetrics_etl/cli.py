@@ -5,34 +5,53 @@ import json
 from . import etl
 
 
-
-
 def parse_capmetrics_configuration(config_parser):
-    worksheet_names = json.loads(config_parser['capmetrics']['worksheet_names'])
+    source = config_parser['capmetrics']['source']
+    daily_worksheets = json.loads(config_parser['capmetrics']['daily_ridership_worksheets'])
+    hourly_worksheets = json.loads(config_parser['capmetrics']['hourly_ridership_worksheets'])
     capmetrics_configuration = {
+        'source': source,
         'timezone': 'America/Chicago',
         'engine': config_parser['capmetrics']['engine'],
-        'worksheet_names': worksheet_names
+        'daily_ridership_worksheets': daily_worksheets,
+        'hourly_ridership_worksheets': hourly_worksheets
     }
     if 'timezone' in config_parser['capmetrics']:
         capmetrics_configuration['timezone'] = config_parser['capmetrics']['timezone']
     return capmetrics_configuration
 
+
 @click.command()
 @click.argument('config')
 @click.option('--test', default=False)
-def run(config, test):
+def etl(config, test):
     if not test:
         config_parser = configparser.ConfigParser()
         # make parsing of config file names case-sensitive
         config_parser.optionxform = str
         config_parser.read(config)
         capmetrics_configuration = parse_capmetrics_configuration(config_parser)
-        etl.run_excel_etl(capmetrics_configuration)
+        report, timestamp = etl.run_excel_etl(capmetrics_configuration)
+        etl.write_etl_report(report, timestamp)
     else:
         click.echo('Capmetrics CLI test.')
+
+
+@click.command()
+@click.argument('config')
+@click.option('--test', default=False)
+def tables(config, test):
+    if not test:
+        config_parser = configparser.ConfigParser()
+        # make parsing of config file names case-sensitive
+        config_parser.optionxform = str
+        config_parser.read(config)
+        capmetrics_configuration = parse_capmetrics_configuration(config_parser)
+        etl.create_tables(capmetrics_configuration)
+    else:
+        click.echo('Capmetrics table creation test.')
 
 # Call run function when module deployed as script. This is approach is common
 # within the python community
 if __name__ == '__main__':
-    run()
+    etl()

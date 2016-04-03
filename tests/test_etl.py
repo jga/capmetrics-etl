@@ -1,10 +1,11 @@
 import datetime
 import os
 import unittest
+import pytz
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import xlrd
-from capmetrics_etl import config, etl, models
+from capmetrics_etl import etl, models
 
 
 class RouteInfoTests(unittest.TestCase):
@@ -106,6 +107,14 @@ class RouteInfoUpdateTests(unittest.TestCase):
         Session.configure(bind=self.engine)
         self.session = Session()
         models.Base.metadata.create_all(self.engine)
+        self.worksheets = [
+            "Ridership by Route Weekday",
+            "Ridership by Route Saturday",
+            "Ridership by Route Sunday",
+            "Riders per Hour Weekday",
+            "Riders Hour Saturday",
+            "Riders per Hour Sunday"
+        ]
 
     def tearDown(self):
         models.Base.metadata.drop_all(self.engine)
@@ -174,7 +183,7 @@ class RouteInfoUpdateTests(unittest.TestCase):
         self.assertTrue('3' in merged_keys)
 
     def test_update_route_info(self):
-        etl.update_route_info(self.test_excel, self.session, config.WORKSHEETS)
+        etl.update_route_info(self.test_excel, self.session, self.worksheets)
         instances = self.session.query(models.Route).all()
         self.assertEqual(len(instances), 88)
         route_1 = self.session.query(models.Route).filter_by(route_number=1).one()
@@ -246,6 +255,7 @@ class DeactivateCurrentPeriodTests(unittest.TestCase):
 class HandleRidershipCellTests(unittest.TestCase):
 
     def setUp(self):
+        self.time_zone = pytz.timezone('America/Chicago')
         tests_path = os.path.dirname(__file__)
         self.test_excel = os.path.join(tests_path, 'data/test_cmta_data.xls')
         self.engine = create_engine('sqlite:///:memory:')
@@ -281,14 +291,14 @@ class HandleRidershipCellTests(unittest.TestCase):
     def test_handle_new_daily_ridership(self):
         excel_book = xlrd.open_workbook(filename=self.test_excel)
         worksheet = excel_book.sheet_by_name('Ridership by Route Saturday')
-        ridership_cell = worksheet.cell(5,8)
+        ridership_cell = worksheet.cell(5, 8)
         period = {
             'year': 2013,
             'season': 'fall',
             'day_of_week': 'saturday'
         }
         etl.handle_ridership_cell(1, period, ridership_cell,
-                                  models.DailyRidership, self.session)
+                                  models.DailyRidership, self.session, self.time_zone)
         self.session.commit()
         ridership = self.session.query(models.DailyRidership)\
                         .filter_by(current=True).one()
@@ -307,7 +317,7 @@ class HandleRidershipCellTests(unittest.TestCase):
             'day_of_week': 'saturday'
         }
         etl.handle_ridership_cell(1, period, ridership_cell,
-                                  models.HourlyRidership, self.session)
+                                  models.HourlyRidership, self.session, self.time_zone)
         self.session.commit()
         ridership = self.session.query(models.HourlyRidership) \
             .filter_by(current=True).one()
@@ -315,5 +325,3 @@ class HandleRidershipCellTests(unittest.TestCase):
         old_ridership = self.session.query(models.HourlyRidership) \
             .filter_by(current=False).one()
         self.assertEqual(old_ridership.ridership, float(70.7))
-
-

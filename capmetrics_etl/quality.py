@@ -3,12 +3,12 @@ Data quality assurance functions.
 """
 import xlrd
 from xlrd.biffh import XLRDError
-from capmetrics_etl import etl, config
+from capmetrics_etl import etl
 
 
-def check_worksheets(file_location):
+def check_worksheets(file_location, worksheet_names):
     """
-    Checks for a list of worksheet names for data extraction. The six names are::
+    Checks for a list of worksheet names for data extraction. For example::
 
             'Ridership by Route Weekday',
             'Ridership by Route Saturday',
@@ -19,6 +19,7 @@ def check_worksheets(file_location):
 
     Args:
         file_location: The location of the target Excel file.
+        worksheet_names (list): A list of string representing Excel worksheet names.
 
     Returns:
         tuple: A boolean indicating whether the required worksheets were found and
@@ -26,9 +27,8 @@ def check_worksheets(file_location):
 
     """
     excel_book = xlrd.open_workbook(filename=file_location)
-    required_names = config.WORKSHEETS
     misses = list()
-    for name in required_names:
+    for name in worksheet_names:
         try:
             excel_book.sheet_by_name(name)
         except XLRDError:

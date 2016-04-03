@@ -7,9 +7,7 @@ import re
 import xlrd
 from xlrd.biffh import XLRDError
 from sqlalchemy.orm.exc import NoResultFound
-from .config import TIMEZONE
 from .models import Route
-
 
 
 def check_for_headers(cell, worksheet, row_counter, result):
@@ -133,7 +131,8 @@ def deactivate_current_period(route_number, period, ridership_model, session):
         pass
 
 
-def handle_ridership_cell(route_number, period, ridership_cell, ridership_model, session):
+def handle_ridership_cell(route_number, period, ridership_cell,
+                          ridership_model, session, time_zone):
     # check for a number cell
     if ridership_cell.ctype == 2:
         deactivate_current_period(route_number, period, ridership_model, session)
@@ -144,11 +143,11 @@ def handle_ridership_cell(route_number, period, ridership_cell, ridership_model,
                                         season=period['season'],
                                         year=period['year'],
                                         ridership=ridership_cell.value,
-                                        created_on=datetime.datetime.now(tz=TIMEZONE))
+                                        created_on=datetime.datetime.now(tz=time_zone))
         session.add(new_ridership)
 
 
-def parse_worksheet_ridership(worksheet, periods, ridership_model, session):
+def parse_worksheet_ridership(worksheet, periods, ridership_model, session, time_zone):
     route_number_cells = worksheet.col(0)
     row_counter = 0
     # let's iterate down the rows
@@ -161,7 +160,7 @@ def parse_worksheet_ridership(worksheet, periods, ridership_model, session):
                 try:
                     ridership_cell = worksheet.cell(row_counter, int(column))
                     handle_ridership_cell(route_number, period_data, ridership_cell,
-                                          ridership_model, session)
+                                          ridership_model, session, time_zone)
                 except XLRDError:
                     pass
         row_counter += 1
@@ -206,7 +205,7 @@ def get_route_info(file_location, worksheet_name):
     for cell in first_column_cells:
         if not check_for_headers(cell, worksheet, row_counter, result) \
                 and cell.ctype == 2:
-            #try to build a route info dict; first, check for a number
+            # try to build a route info dict; first, check for a number
             route_number = str(int(cell.value))
             # start info dict with route number as safe default for route name
             route_info = {
@@ -290,130 +289,3 @@ def update_route_info(file_location, session, worksheets):
     session.commit()
 
 
-#
-# def extract(file_location):
-#     excel_book = xlrd.open_workbook(filename=file_location)
-#     excel_worksheet = excel_book.sheet_by_index()
-#
-# class RidershipEncoder(json.JSONEncoder):
-#     def default(self, o):
-#         return {
-#             'id': o.id,
-#             'serviceName': o.service_name,
-#             'serviceNumber': o.service_number,
-#             'datetime': str(o.datetime),
-#             'result': o.result,
-#             'temporalLabel': o.temporal_label
-#         }
-#
-#
-# def process_row(sheet, current_row, row_map):
-#     info = ServiceInfo()
-#     single_route_ridership_data = []
-#     holder = []
-#     for idx, column_format in enumerate(row_map):
-#         # process the columns for the row
-#         value = sheet.row_values(current_row, idx, (idx + 1))
-#         if column_format['cls'] == 'Ridership':
-#             ridership = Ridership(column_format['dt'], temporal_label=column_format['temporal_label'])
-#             ridership.result = value[0]
-#             holder.append(ridership)
-#         if column_format['cls'] == 'ServiceNumber':
-#             info.number = value[0]
-#         if column_format['cls'] == 'ServiceName':
-#             info.name = value[0]
-#     for rd in holder:
-#         rd.service_number = info.number
-#         rd.service_name = info.name
-#         single_route_ridership_data.append(rd)
-#     return single_route_ridership_data
-#
-#
-# def handle_route_seasons(sheet, opt):
-#     all_routes_ridership_objects = []
-#     row_map = opt['row_map']
-#     current_row = opt['data_rows'][0]
-#     end_row = opt['data_rows'][1]
-#     if current_row <= end_row:
-#         while current_row <= end_row:
-#             # process a row of data, which is a sequence of ridership data points
-#             single_route_ridership_data = process_row(sheet, current_row, row_map)
-#             for ridership in single_route_ridership_data:
-#                 ridership.id = (len(all_routes_ridership_objects) + 1)
-#                 all_routes_ridership_objects.append(ridership)
-#             current_row += 1
-#         with open('/Users/jga/dev/capmetrics-app/public/ridership.json', 'w') as outfile:
-#             json.dump(all_routes_ridership_objects, outfile, cls=RidershipEncoder, indent=2)
-
-#
-# def update_payload(payload, label, value):
-#     payload['labels'].append(label)
-#     if not value:
-#         value = 0
-#     else:
-#         value = math.floor(value)
-#     payload['series'].append(value)
-#
-#
-# def to_chart_group(sheet, current_row, row_map):
-#     chart_payload = {
-#         'labels': [],
-#         'series': []
-#     }
-#     chart_group = {
-#         'serviceNumber': None,
-#         'serviceName': None,
-#         'weekday': copy.deepcopy(chart_payload),
-#         'saturday': copy.deepcopy(chart_payload),
-#         'sunday': copy.deepcopy(chart_payload)
-#     }
-#     for idx, column_format in enumerate(row_map):
-#         # process the columns for the row
-#         value = sheet.row_values(current_row, idx, (idx + 1))
-#         if column_format['cls'] == 'Ridership':
-#             if column_format['series'] == 'weekday':
-#                 update_payload(chart_group['weekday'], column_format['temporal_label'], value[0])
-#             elif column_format['series'] == 'saturday':
-#                 update_payload(chart_group['saturday'], column_format['temporal_label'], value[0])
-#             elif column_format['series'] == 'sunday':
-#                 update_payload(chart_group['sunday'], column_format['temporal_label'], value[0])
-#         if column_format['cls'] == 'ServiceNumber':
-#             chart_group['serviceNumber'] = math.floor(value[0])
-#         if column_format['cls'] == 'ServiceName':
-#             chart_group['serviceName'] = value[0]
-#     return chart_group
-#
-#
-# def to_json(file_location, options, handler):
-#     book = xlrd.open_workbook(filename=file_location)
-#     sheet = book.sheet_by_index(options['sheet_number'])
-#     return handler(sheet, options)
-#
-#
-# def write_index(data_source, path):
-#     json_data = to_json(data_source, OPTIONS, etl.to_route_charts)
-#     output = template.render(route_ids=[], viz_data=json_data)
-#     with open(path, "wb") as fh:
-#         fh.write(output)
-#
-#
-# def write():
-#     write_index('/Users/jga/Downloads/Ridership by Route by Markup-Item 2.xlsx', '/Users/jga/dev/cmx-dev/index.html')
-#
-#
-# def to_route_charts(sheet, opt):
-#     charts = []
-#     row_map = opt['row_map']
-#     current_row = opt['data_rows'][0]
-#     end_row = opt['data_rows'][1]
-#     if current_row <= end_row:
-#         while current_row <= end_row:
-#             # process a row of data, which is a sequence of ridership data points
-#             chart_group = to_chart_group(sheet, current_row, row_map)
-#             charts.append(chart_group)
-#             current_row += 1
-#
-#         return json.dumps(charts)
-#         #with open('/Users/jga/dev/cmx-dev/ridership_visualization.json', 'w') as outfile:
-#             #json.dump(charts, outfile, indent=2)
-#             #json.dump(charts, outfile, cls=ChartistBarVisualizationEncoder, indent=2)

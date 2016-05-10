@@ -17,9 +17,9 @@ class TestQualityAssurance(unittest.TestCase):
         tests_path = os.path.dirname(__file__)
         self.test_excel = os.path.join(tests_path, 'data/test_cmta_data.xls')
 
-    def test_worksheet_check(self):
-        has_worksheets, missing = quality.check_worksheets(self.test_excel,
-                                                           self.worksheet_names)
+    def test_worksheet_completeness_check(self):
+        has_worksheets, missing = quality.check_worksheet_completeness(self.test_excel,
+                                                                       self.worksheet_names)
         self.assertTrue(has_worksheets, msg=missing)
 
     def test_check_route_info(self):
@@ -28,4 +28,5 @@ class TestQualityAssurance(unittest.TestCase):
         self.assertTrue(quality.check_route_info(self.test_excel, 'Ridership by Route Sunday'))
 
     def test_check_ridership_columns(self):
-        self.assertTrue(quality.check_for_ridership_columns(self.test_excel))
+        self.assertTrue(quality.check_for_ridership_columns(self.test_excel,
+                                                            self.worksheet_names))

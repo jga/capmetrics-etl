@@ -47,11 +47,9 @@ def tables(config, test):
         config_parser.optionxform = str
         config_parser.read(config)
         capmetrics_configuration = parse_capmetrics_configuration(config_parser)
-        etl.create_tables(capmetrics_configuration)
+        engine = create_engine(capmetrics_configuration['engine_url'])
+        create_tables(engine)
+        click.echo('Capmetrics database tables created.')
     else:
         click.echo('Capmetrics table creation test.')
 
-# Call run function when module deployed as script. This is approach is common
-# within the python community
-if __name__ == '__main__':
-    etl()

@@ -1,3 +1,8 @@
+"""
+The **capmetrics-etl** models represent groups of data that allow for
+consistent comparisons of ridership and other performance data across
+time, routes, and service types.
+"""
 from sqlalchemy import Boolean, Column, Integer, Float, DateTime, ForeignKey, String
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
@@ -7,6 +12,9 @@ Base = declarative_base()
 
 
 class Route(Base):
+    """
+    A geographically semi-consistent designation for transit service.
+    """
     __tablename__ = 'route'
     id = Column(Integer, primary_key=True)
     route_number = Column(Integer, unique=True)
@@ -15,6 +23,10 @@ class Route(Base):
 
 
 class DailyRidership(Base):
+    """
+    Estimated "daily" ridership for a type of day (weekday, Saturday, Sunday)
+    and season.
+    """
     __tablename__ = 'daily_ridership'
     id = Column(Integer, primary_key=True)
     created_on = Column(DateTime)
@@ -25,10 +37,15 @@ class DailyRidership(Base):
     ridership = Column(Float)
     route_id = Column(Integer, ForeignKey('route.id'))
     route = relationship("Route", backref='daily_ridership')
+    timestamp = Column(DateTime)
 
 
-class HourlyRidership(Base):
-    __tablename__ = 'hourly_ridership'
+class ServiceHourRidership(Base):
+    """
+    Estimated service hour productivity for a type of day (weekday, Saturday, Sunday)
+    and season.
+    """
+    __tablename__ = 'service_hour_ridership'
     id = Column(Integer, primary_key=True)
     created_on = Column(DateTime)
     current = Column(Boolean)
@@ -37,5 +54,17 @@ class HourlyRidership(Base):
     year = Column(Integer)
     ridership = Column(Float)
     route_id = Column(Integer, ForeignKey('route.id'))
-    route = relationship("Route", backref='hourly_ridership')
+    route = relationship("Route", backref='service_hour_ridership')
+    timestamp = Column(DateTime)
+
+
+class ETLReport(Base):
+    """Captures basic metrics for an ETL job."""
+    __tablename__ = 'etl_report'
+    id = Column(Integer, primary_key=True)
+    etl_type = Column(String)
+    timestamp = Column(DateTime)
+    creates = Column(Integer)
+    updates = Column(Integer)
+    total_models = Column(Integer)
 

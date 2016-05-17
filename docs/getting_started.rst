@@ -118,14 +118,17 @@ The `ini` file
 In order to run **capmetrics-etl** commands, you'll need an Python ``ini`` file. The application
 expects the following entries:
 
-Here is an example ``ini`` file::
+Here is an example ``ini`` file with a PostgreSQL database configuration::
 
-    [capmetrics]
-    source=./tests/data/test_cmta_data.xls
-    output=~/capmetrics-data/
-    engine_url=sqlite:///:memory:
-    daily_ridership_worksheets=["Ridership by Route Weekday", "Ridership by Route Saturday", "Ridership by Route Sunday"]
-    hour_productivity_worksheets=["Riders per Hour Weekday", "Riders Hour Saturday", "Riders per Hour Sunday"]
+        [capmetrics]
+        engine_url=postgresql://username:password@localhost:5432/cmxdb
+        daily_ridership_worksheets=["Ridership by Route Weekday", "Ridership by Route Saturday", "Ridership by Route Sunday"]
+        hour_productivity_worksheets=["Riders per Hour Weekday", "Riders Hour Saturday", "Riders per Hour Sunday"]
+
+Make sure the database engine you select is properly configured on your machine. For example, if you
+are using PostgreSQL, you'll need to have the appropriate drivers installed on your system, as well
+as a Python driver such as ``psycopg`` in your Python virtual environment. For details, see the `psycopg2 guide`_.
+
 
 Both the ``etl`` and ``tables`` commands require that you pass the path to the ``ini`` file as the
 first argument in the command call.
@@ -156,3 +159,5 @@ Build and Update Route models
 
 The application ingests the route number-name pairings and creates new route objects or updates
 the name and service type of existing ones.
+
+.. _psycopg2 guide: http://initd.org/psycopg/docs/install.html

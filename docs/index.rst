@@ -1,5 +1,3 @@
-.. capmetrics-etl documentation master file, created by
-   sphinx-quickstart on Mon Jan 11 00:08:57 2016.
 ==============
 capmetrics-etl
 ==============

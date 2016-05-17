@@ -127,8 +127,8 @@ def get_period_timestamp(day_of_week, season, year):
         month = 7
     elif season == 'fall':
         month = 10
-    tz = pytz.timezone(TIMEZONE_NAME)
-    timestamp = datetime.datetime(year=int(year), month=month, day=1, tzinfo=tz)
+    timestamp = datetime.datetime(year=int(year), month=month, day=1)
+    APP_TIMEZONE.localize(timestamp)
     return calibrate_day_of_week(timestamp, day_of_week.lower())
 
 
@@ -254,7 +254,7 @@ def handle_ridership_cell(route_number, period, ridership_cell,
                                         year=period['year'],
                                         timestamp=period['timestamp'],
                                         ridership=ridership_cell.value,
-                                        created_on=datetime.datetime.now(tz=APP_TIMEZONE))
+                                        created_on=APP_TIMEZONE.localize(datetime.datetime.now()))
         session.add(new_ridership)
         if report:
             report.creates += 1
@@ -312,7 +312,8 @@ def update_ridership(file_location, worksheet_names, ridership_model, session):
         parse_worksheet_ridership(worksheet, periods, ridership_model,
                                   session, etl_report)
     session.commit()
-    query = session.query(func.count(ridership_model.id))
+    # avoids sub-querying performance hit on MySQL
+    query = session.query(func.count(ridership_model.id)).group_by(ridership_model.id)
     etl_report.total_models = query.count()
     return etl_report
 
@@ -452,16 +453,16 @@ def update_route_info(file_location, session, worksheets):
     return etl_report
 
 
-def run_excel_etl(configuration, session):
+def run_excel_etl(data_source_file, session, configuration):
     """
     Consumes an Excel file with CapMetro data and updates database tables
     with the file's data.
 
     Args:
-        configuration (dict): ETL configuration settings.
+        data_source_file (str): Location of the Excel file to be analyzed.
         session: SQLAlchemy session.
+        configuration (dict): ETL configuration settings.
     """
-    data_source_file = configuration['source']
     file_location = os.path.abspath(data_source_file)
     daily_worksheets = configuration['daily_ridership_worksheets']
     hourly_worksheets = configuration['hour_productivity_worksheets']

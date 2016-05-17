@@ -210,7 +210,6 @@ class ParseWorksheetRidershipTests(unittest.TestCase):
         excel_book = xlrd.open_workbook(filename=self.test_excel)
         self.worksheet = excel_book.sheet_by_name('Ridership by Route Weekday')
         self.periods = etl.get_periods(self.worksheet)
-        print(self.periods)
         self.engine = create_engine('sqlite:///:memory:')
         Session = sessionmaker()
         Session.configure(bind=self.engine)
@@ -274,6 +273,7 @@ class ParseWorksheetRidershipTests(unittest.TestCase):
         self.assertEqual(len(list(difference)), 0)
         self.assertEqual(report.creates, 11)
         self.assertEqual(report.updates, 0)
+        self.assertEqual(report.total_models, 11)
 
 
 class StoreRouteTests(unittest.TestCase):
@@ -345,8 +345,6 @@ class StoreRouteTests(unittest.TestCase):
 class UpdateRouteInfoTests(unittest.TestCase):
     """
     Tests etl.update_route_info function.
-
-
     """
 
     def setUp(self):
@@ -657,6 +655,34 @@ class HandleRidershipCellTests(unittest.TestCase):
         self.assertEqual(old_ridership.ridership, float(70.7))
 
 
+class UpdateRidershipTests(unittest.TestCase):
+
+    def setUp(self):
+        tests_path = os.path.dirname(__file__)
+        ini_config = os.path.join(tests_path, 'capmetrics_single.ini')
+        config_parser = configparser.ConfigParser()
+        # make parsing of config file names case-sensitive
+        config_parser.optionxform = str
+        config_parser.read(ini_config)
+        self.config = cli.parse_capmetrics_configuration(config_parser)
+        engine = create_engine(self.config['engine_url'])
+        Session = sessionmaker()
+        Session.configure(bind=engine)
+        session = Session()
+        models.Base.metadata.create_all(engine)
+        self.session = session
+        etl.update_route_info('./tests/data/test_cmta_data_single.xls',
+                              session,
+                              ['Ridership by Route Weekday'])
+
+    def test_etl_reports(self):
+        report = etl.update_ridership('./tests/data/test_cmta_data_single.xls',
+                             ['Ridership by Route Weekday'],
+                             models.DailyRidership,
+                             self.session)
+        self.assertEqual(report.total_models, 11)
+
+
 class RunExcelETLTests(unittest.TestCase):
 
     def setUp(self):
@@ -675,7 +701,8 @@ class RunExcelETLTests(unittest.TestCase):
         self.session = session
 
     def test_etl_reports(self):
-        etl.run_excel_etl(self.config, self.session)
+        # This test takes a long time, as it perform the full etl task for a realistic file
+        etl.run_excel_etl('./tests/data/test_cmta_data.xls', self.session, self.config)
         reports = self.session.query(models.ETLReport).all()
         self.assertTrue(len(reports), 3)
 

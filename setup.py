@@ -19,7 +19,7 @@ setup(
     description="ETL for CapMetro raw data.",
     entry_points={
         'console_scripts': [
-            'capmetrics=capmetrics_etl.cli:run',
+            'capmetrics=capmetrics_etl.cli:etl',
             'capmetrics-tables=capmetrics_etl.cli.tables'
         ],
     },

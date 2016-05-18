@@ -23,7 +23,7 @@ setup(
             'capmetrics-tables=capmetrics_etl.cli.tables'
         ],
     },
-    install_requires=['click', 'pytz', 'sqlalchemy', 'xlrd'],
+    install_requires=['click', 'python-dateutil', 'pytz', 'sqlalchemy', 'xlrd'],
     keywords="python etl transit",
     license="MIT",
     long_description=get_readme(),

@@ -849,3 +849,70 @@ class GetPeriodTimestampTests(unittest.TestCase):
         self.assertEqual(timestamp.day, 3)
         self.assertEqual(timestamp.year, 2016)
 
+
+class DeactivatePreviousSystemRidershipFacts(unittest.TestCase):
+
+    def setUp(self):
+        tests_path = os.path.dirname(__file__)
+        ini_config = os.path.join(tests_path, 'capmetrics.ini')
+        config_parser = configparser.ConfigParser()
+        # make parsing of config file names case-sensitive
+        config_parser.optionxform = str
+        config_parser.read(ini_config)
+        self.config = cli.parse_capmetrics_configuration(config_parser)
+        engine = create_engine(self.config['engine_url'])
+        Session = sessionmaker()
+        Session.configure(bind=engine)
+        session = Session()
+        models.Base.metadata.create_all(engine)
+        system_ridership_fact1 = models.SystemRidership(
+            id=1,
+            created_on=APP_TIMEZONE.localize(datetime.now()),
+            is_active=True,
+            day_of_week='weekday',
+            season='winter',
+            calendar_year=2015,
+            service_type='bus',
+            ridership=1000,
+            season_timestamp=APP_TIMEZONE.localize(datetime(2015, 1, 1)))
+        system_ridership_fact2 = models.SystemRidership(
+            id=2,
+            created_on=APP_TIMEZONE.localize(datetime.now()),
+            is_active=True,
+            day_of_week='weekday',
+            season='fall',
+            calendar_year=2015,
+            service_type='bus',
+            ridership=1000,
+            season_timestamp=APP_TIMEZONE.localize(datetime(2015, 7, 1)))
+        system_ridership_fact3 = models.SystemRidership(
+            id=3,
+            created_on=APP_TIMEZONE.localize(datetime.now()),
+            is_active=True,
+            day_of_week='weekday',
+            season='spring',
+            calendar_year=2015,
+            service_type='bus',
+            ridership=1000,
+            season_timestamp=APP_TIMEZONE.localize(datetime(2015, 4, 1)))
+        session.add_all([system_ridership_fact1,
+                         system_ridership_fact2,
+                         system_ridership_fact3])
+        session.commit()
+        self.session = session
+
+    def test_deactivation(self):
+        all_models = self.session.query(models.SystemRidership).all()
+        self.assertEqual(len(all_models), 3)
+        pre_actives = self.session.query(models.SystemRidership).filter_by(is_active=True).all()
+        self.assertEqual(len(pre_actives), 3)
+        etl.deactivate_previous_system_ridership_facts(self.session)
+        post_actives = self.session.query(models.SystemRidership).filter_by(is_active=True).all()
+        self.assertEqual(len(post_actives), 0)
+        inactives = self.session.query(models.SystemRidership).filter_by(is_active=False).all()
+        self.assertEqual(len(inactives), 3)
+
+
+
+
+

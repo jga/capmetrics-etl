@@ -5,6 +5,7 @@ import datetime
 import os
 import pytz
 import re
+from dateutil.parser import parse
 from sqlalchemy import func
 from sqlalchemy.orm.exc import NoResultFound
 import xlrd
@@ -454,6 +455,61 @@ def update_route_info(file_location, session, worksheets):
     return etl_report
 
 
+def deactivate_previous_system_ridership_facts(session):
+    facts = session.query(models.SystemRidership).filter_by(is_active=True).all()
+    for fact in facts:
+        fact.is_active = False
+    session.commit()
+
+
+def add_ridership_fact(system_facts, fact):
+    timestamp = fact.season_timestamp.isoformat()
+    if timestamp in system_facts:
+        ridership_by_service = system_facts[timestamp]
+        if fact.route.service_type in ridership_by_service:
+            ridership_by_service[fact.route.service_type] = \
+                ridership_by_service[fact.route.service_type] + fact.ridership
+        else:
+            ridership_by_service[fact.route.service_type] = fact.ridership
+    else:
+        system_facts[timestamp] = {
+            fact.route.service_type: fact.ridership,
+            'temporal': {
+                'day_of_week': fact.day_of_week,
+                'season': fact.season,
+                'calendar_year': fact.calendar_year
+            }
+        }
+
+
+def store_system_ridership(system_facts, session):
+    for season_timestamp, ridership_by_service in system_facts.items():
+        for service_type, ridership in ridership_by_service.items():
+            if service_type is not 'temporal':
+                data = {
+                    'calendar_year': ridership_by_service['temporal']['calendar_year'],
+                    'created_on': APP_TIMEZONE.localize(datetime.datetime.now()),
+                    'day_of_week': ridership_by_service['temporal']['day_of_week'],
+                    'is_active': True,
+                    'ridership': ridership,
+                    'season': ridership_by_service['temporal']['season'],
+                    'season_timestamp': parse(season_timestamp),
+                    'service_type': service_type
+                }
+                system_ridership = models.SystemRidership(**data)
+                session.add(system_ridership)
+    session.commit()
+
+
+def update_system_ridership(session):
+    deactivate_previous_system_ridership_facts(session)
+    ridership_facts = session.query(models.DailyRidership).filter_by(is_current=True).all()
+    system_facts = dict()
+    for fact in ridership_facts:
+        add_ridership_fact(system_facts, fact)
+    store_system_ridership(system_facts, session)
+
+
 def run_excel_etl(data_source_file, session, configuration):
     """
     Consumes an Excel file with CapMetro data and updates database tables
@@ -485,5 +541,6 @@ def run_excel_etl(data_source_file, session, configuration):
     hourly_ridership_report.etl_type = 'hourly-ridership'
     session.add(hourly_ridership_report)
     session.commit()
+    update_system_ridership(session)
     session.close()
 

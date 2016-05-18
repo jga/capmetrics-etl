@@ -58,6 +58,23 @@ class ServiceHourRidership(Base):
     season_timestamp = Column(DateTime(timezone=True))
 
 
+class SystemRidership(Base):
+    """
+    Estimated system-wide ridership for a type of day (weekday, Saturday, Sunday)
+    and season and service type.
+    """
+    __tablename__ = 'system_ridership'
+    id = Column(Integer, primary_key=True)
+    calendar_year = Column(Integer)
+    created_on = Column(DateTime(timezone=True))
+    day_of_week = Column(String)
+    is_active = Column(Boolean)
+    ridership = Column(Float)
+    season = Column(String)
+    season_timestamp = Column(DateTime(timezone=True))
+    service_type = Column(String)
+
+
 class ETLReport(Base):
     """Captures basic metrics for an ETL job."""
     __tablename__ = 'etl_report'

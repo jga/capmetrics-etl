@@ -8,6 +8,8 @@ from sqlalchemy.orm import sessionmaker
 import xlrd
 from capmetrics_etl import cli, etl, models
 
+APP_TIMEZONE = pytz.timezone('America/Chicago')
+
 
 class CheckForHeaderTests(unittest.TestCase):
 
@@ -103,17 +105,17 @@ class GetPeriodTests(unittest.TestCase):
         self.assertEqual(periods['3']['day_of_week'], 'weekday')
         self.assertEqual(periods['3']['season'], 'spring')
         self.assertEqual(periods['3']['year'], 2012)
-        timestamp_3 = datetime(year=2012, month=3, day=26, tzinfo=pytz.timezone('America/Chicago'))
-        self.assertEqual(periods['3']['timestamp'], timestamp_3)
+        timestamp_3 = APP_TIMEZONE.localize(datetime(year=2012, month=3, day=26))
+        self.assertEqual(periods['3']['timestamp'], timestamp_3, msg=periods['3']['timestamp'])
         self.assertEqual(periods['8']['day_of_week'], 'weekday')
         self.assertEqual(periods['8']['season'], 'fall')
         self.assertEqual(periods['8']['year'], 2013)
-        timestamp_8 = datetime(year=2013, month=9, day=30, tzinfo=pytz.timezone('America/Chicago'))
+        timestamp_8 = APP_TIMEZONE.localize(datetime(year=2013, month=9, day=30))
         self.assertEqual(periods['8']['timestamp'], timestamp_8)
         self.assertEqual(periods['10']['day_of_week'], 'weekday')
         self.assertEqual(periods['10']['season'], 'summer')
         self.assertEqual(periods['10']['year'], 2014)
-        timestamp_10 = datetime(year=2014, month=6, day=30, tzinfo=pytz.timezone('America/Chicago'))
+        timestamp_10 = APP_TIMEZONE.localize(datetime(year=2014, month=6, day=30))
         self.assertEqual(periods['10']['timestamp'], timestamp_10)
 
 
@@ -273,8 +275,6 @@ class ParseWorksheetRidershipTests(unittest.TestCase):
         self.assertEqual(len(list(difference)), 0)
         self.assertEqual(report.creates, 11)
         self.assertEqual(report.updates, 0)
-        self.assertEqual(report.total_models, 11)
-
 
 class StoreRouteTests(unittest.TestCase):
     """
@@ -527,13 +527,13 @@ class DeactivateCurrentPeriodTests(unittest.TestCase):
         self.session.commit()
         self.timestamp = etl.get_period_timestamp('weekday', 'spring', 2015)
         daily_ridership = models.DailyRidership(created_on=datetime.now(),
-                                                current=True,
+                                                is_current=True,
                                                 day_of_week='weekday',
                                                 season='spring',
-                                                year=2015,
+                                                calendar_year=2015,
                                                 ridership=700,
                                                 route_id=route.id,
-                                                timestamp=self.timestamp)
+                                                season_timestamp=self.timestamp)
         self.session.add(daily_ridership)
         self.session.commit()
 
@@ -551,7 +551,7 @@ class DeactivateCurrentPeriodTests(unittest.TestCase):
         etl.deactivate_current_period(1, period, ridership_model, self.session)
         self.session.commit()
         ridership = self.session.query(models.DailyRidership).one()
-        self.assertFalse(ridership.current)
+        self.assertFalse(ridership.is_current)
 
 
 class HandleRidershipCellTests(unittest.TestCase):
@@ -570,19 +570,19 @@ class HandleRidershipCellTests(unittest.TestCase):
         self.session.commit()
         self.timestamp = etl.get_period_timestamp('saturday', 'fall', 2013)
         daily_ridership = models.DailyRidership(created_on=datetime.now(),
-                                                current=True,
+                                                is_current=True,
                                                 day_of_week='saturday',
                                                 season='fall',
-                                                year=2013,
-                                                timestamp=self.timestamp,
+                                                calendar_year=2013,
+                                                season_timestamp=self.timestamp,
                                                 ridership=7000,
                                                 route_id=route.id)
         hourly_ridership = models.ServiceHourRidership(created_on=datetime.now(),
-                                                       current=True,
+                                                       is_current=True,
                                                        day_of_week='saturday',
                                                        season='fall',
-                                                       timestamp=self.timestamp,
-                                                       year=2013,
+                                                       season_timestamp=self.timestamp,
+                                                       calendar_year=2013,
                                                        ridership=70.7,
                                                        route_id=route.id)
         self.session.add(daily_ridership)
@@ -606,10 +606,10 @@ class HandleRidershipCellTests(unittest.TestCase):
                                   models.DailyRidership, self.session)
         self.session.commit()
         ridership = self.session.query(models.DailyRidership)\
-                        .filter_by(current=True).one()
+                        .filter_by(is_current=True).one()
         self.assertEqual(ridership.ridership, 10997.5717761557)
         old_ridership = self.session.query(models.DailyRidership) \
-            .filter_by(current=False).one()
+            .filter_by(is_current=False).one()
         self.assertEqual(old_ridership.ridership, float(7000))
 
     def test_handle_new_daily_ridership_with_report(self):
@@ -627,10 +627,10 @@ class HandleRidershipCellTests(unittest.TestCase):
                                   models.DailyRidership, self.session, report)
         self.session.commit()
         ridership = self.session.query(models.DailyRidership) \
-            .filter_by(current=True).one()
+            .filter_by(is_current=True).one()
         self.assertEqual(ridership.ridership, 10997.5717761557)
         old_ridership = self.session.query(models.DailyRidership) \
-            .filter_by(current=False).one()
+            .filter_by(is_current=False).one()
         self.assertEqual(old_ridership.ridership, float(7000))
         self.assertEqual(report.updates, 1)
 
@@ -648,10 +648,10 @@ class HandleRidershipCellTests(unittest.TestCase):
                                   models.ServiceHourRidership, self.session)
         self.session.commit()
         ridership = self.session.query(models.ServiceHourRidership) \
-            .filter_by(current=True).one()
+            .filter_by(is_current=True).one()
         self.assertEqual(ridership.ridership, 39.8486808725975)
         old_ridership = self.session.query(models.ServiceHourRidership) \
-            .filter_by(current=False).one()
+            .filter_by(is_current=False).one()
         self.assertEqual(old_ridership.ridership, float(70.7))
 
 

@@ -30,14 +30,14 @@ class DailyRidership(Base):
     __tablename__ = 'daily_ridership'
     id = Column(Integer, primary_key=True)
     created_on = Column(DateTime(timezone=True))
-    current = Column(Boolean)
+    is_current = Column(Boolean)
     day_of_week = Column(String)
     season = Column(String)
-    year = Column(Integer)
+    calendar_year = Column(Integer)
     ridership = Column(Float)
     route_id = Column(Integer, ForeignKey('route.id'))
     route = relationship("Route", backref='daily_ridership')
-    timestamp = Column(DateTime(timezone=True))
+    season_timestamp = Column(DateTime(timezone=True))
 
 
 class ServiceHourRidership(Base):
@@ -48,14 +48,14 @@ class ServiceHourRidership(Base):
     __tablename__ = 'service_hour_ridership'
     id = Column(Integer, primary_key=True)
     created_on = Column(DateTime(timezone=True))
-    current = Column(Boolean)
+    is_current = Column(Boolean)
     day_of_week = Column(String)
     season = Column(String)
-    year = Column(Integer)
+    calendar_year = Column(Integer)
     ridership = Column(Float)
     route_id = Column(Integer, ForeignKey('route.id'))
     route = relationship("Route", backref='service_hour_ridership')
-    timestamp = Column(DateTime(timezone=True))
+    season_timestamp = Column(DateTime(timezone=True))
 
 
 class ETLReport(Base):
@@ -63,7 +63,7 @@ class ETLReport(Base):
     __tablename__ = 'etl_report'
     id = Column(Integer, primary_key=True)
     etl_type = Column(String)
-    timestamp = Column(DateTime(timezone=True))
+    created_on = Column(DateTime(timezone=True))
     creates = Column(Integer)
     updates = Column(Integer)
     total_models = Column(Integer)

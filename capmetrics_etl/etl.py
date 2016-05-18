@@ -100,7 +100,7 @@ def calibrate_day_of_week(timestamp, day_of_week):
     return timestamp
 
 
-def get_period_timestamp(day_of_week, season, year):
+def get_period_timestamp(day_of_week, season, calendar_year):
     """
     Selects a Python datetime timestamp to represent a 'season' as
     a specific day of the year. The function selects the first day of
@@ -115,7 +115,7 @@ def get_period_timestamp(day_of_week, season, year):
     Args:
         day_of_week (str): 'weekday', 'saturday', and 'sunday' are expected.
         season (str): 'winter', 'spring', 'summer', 'fall' are expected.
-        year (int): The calendar year.
+        calendar_year (int): The calendar year.
 
     Returns:
         A Python datetime object that represents that 'season'.
@@ -127,8 +127,9 @@ def get_period_timestamp(day_of_week, season, year):
         month = 7
     elif season == 'fall':
         month = 10
-    timestamp = datetime.datetime(year=int(year), month=month, day=1)
-    APP_TIMEZONE.localize(timestamp)
+    timestamp = APP_TIMEZONE.localize(datetime.datetime(year=calendar_year,
+                                                        month=month,
+                                                        day=1))
     return calibrate_day_of_week(timestamp, day_of_week.lower())
 
 
@@ -152,7 +153,7 @@ def find_period(worksheet, periods, column_index, minimum_search=10):
             season, year = get_season_and_year(cell.value)
             day_of_week = extract_day_of_week(row_index, column_index, worksheet)
             if season and year and day_of_week:
-                period_timestamp = get_period_timestamp(day_of_week, season.lower(), year)
+                period_timestamp = get_period_timestamp(day_of_week, season.lower(), int(year))
                 periods[str(column_index)] = {
                     'column': column_index,
                     'season': season.lower(),
@@ -195,7 +196,7 @@ def get_periods(worksheet, minimum_search=10):
 
 def deactivate_current_period(route_number, period, ridership_model, session):
     """
-    "Deactivates" a ridership metric model by setting its ``current`` property
+    "Deactivates" a ridership metric model by setting its ``is_current`` property
     to ``False``.
 
     Args:
@@ -206,17 +207,17 @@ def deactivate_current_period(route_number, period, ridership_model, session):
 
     Returns:
         bool: ``True`` if an existing instance had
-            its ``current`` property changed. ``False`` otherwise.
+            its ``is_current`` property changed. ``False`` otherwise.
     """
     route = session.query(models.Route).filter_by(route_number=route_number).one()
     try:
         current_instance = session.query(ridership_model).\
                             filter_by(route_id=route.id,
                                       season=period['season'],
-                                      year=period['year'],
+                                      calendar_year=period['year'],
                                       day_of_week=period['day_of_week'],
-                                      current=True).one()
-        current_instance.current = False
+                                      is_current=True).one()
+        current_instance.is_current = False
         return True
     except NoResultFound:
         return False
@@ -248,11 +249,11 @@ def handle_ridership_cell(route_number, period, ridership_cell,
         route = session.query(models.Route).filter_by(route_number=route_number).one()
         # This is now the current ridership data for the period
         new_ridership = ridership_model(route_id=route.id,
-                                        current=True,
+                                        is_current=True,
                                         day_of_week=period['day_of_week'],
                                         season=period['season'],
-                                        year=period['year'],
-                                        timestamp=period['timestamp'],
+                                        calendar_year=period['year'],
+                                        season_timestamp=period['timestamp'],
                                         ridership=ridership_cell.value,
                                         created_on=APP_TIMEZONE.localize(datetime.datetime.now()))
         session.add(new_ridership)
@@ -300,7 +301,7 @@ def parse_worksheet_ridership(worksheet, periods, ridership_model,
 
 def update_ridership(file_location, worksheet_names, ridership_model, session):
     etl_report = models.ETLReport(
-        timestamp=datetime.datetime.now(APP_TIMEZONE),
+        created_on=APP_TIMEZONE.localize(datetime.datetime.now()),
         updates=0,
         creates=0,
         total_models=None
@@ -434,7 +435,7 @@ def update_route_info(file_location, session, worksheets):
         :class:`~.models.ETLReport`: A report with basic ETL job metrics
     """
     etl_report = models.ETLReport(
-        timestamp=datetime.datetime.now(APP_TIMEZONE),
+        created_on=APP_TIMEZONE.localize(datetime.datetime.now()),
         updates=0,
         creates=0,
         total_models=None
@@ -483,8 +484,6 @@ def run_excel_etl(data_source_file, session, configuration):
                                                session)
     hourly_ridership_report.etl_type = 'hourly-ridership'
     session.add(hourly_ridership_report)
-    # now = datetime.datetime.now(timezone)
-    # timestamp = now.strftime("%m%d%Y")
     session.commit()
     session.close()
 

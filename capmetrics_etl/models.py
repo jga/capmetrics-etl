@@ -37,7 +37,7 @@ class DailyRidership(Base):
     ridership = Column(Float)
     route_id = Column(Integer, ForeignKey('route.id'))
     route = relationship("Route", backref='daily_ridership')
-    season_timestamp = Column(DateTime(timezone=True))
+    measurement_timestamp = Column(DateTime(timezone=True))
 
 
 class ServiceHourRidership(Base):
@@ -55,13 +55,13 @@ class ServiceHourRidership(Base):
     ridership = Column(Float)
     route_id = Column(Integer, ForeignKey('route.id'))
     route = relationship("Route", backref='service_hour_ridership')
-    season_timestamp = Column(DateTime(timezone=True))
+    measurement_timestamp = Column(DateTime(timezone=True))
 
 
 class SystemRidership(Base):
     """
-    Estimated system-wide ridership for a type of day (weekday, Saturday, Sunday)
-    and season and service type.
+    Estimated **system-wide** ridership for a (1) type of day (weekday, Saturday, Sunday)
+    by (2) season and (3) service type.
     """
     __tablename__ = 'system_ridership'
     id = Column(Integer, primary_key=True)
@@ -71,8 +71,26 @@ class SystemRidership(Base):
     is_active = Column(Boolean)
     ridership = Column(Float)
     season = Column(String)
-    season_timestamp = Column(DateTime(timezone=True))
+    measurement_timestamp = Column(DateTime(timezone=True))
     service_type = Column(String)
+
+
+class SystemTrend(Base):
+    """
+    Aggregates ``SystemRidership`` facts to conveniently provide a performance
+    trend for a service type across season-based measurements.
+
+    Attributes:
+        id: An integer primary key.
+        service_type: A string column with names for service types.
+        trend: A JSON string with longitudinal ridership data.
+        updated_on: A timezone-aware datetime.
+    """
+    __tablename__ = 'system_trend'
+    id = Column(Integer, primary_key=True)
+    service_type = Column(String)
+    trend = Column(String)
+    updated_on = Column(DateTime(timezone=True))
 
 
 class ETLReport(Base):

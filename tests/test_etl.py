@@ -1,5 +1,6 @@
 import configparser
 from datetime import datetime
+import json
 import os
 import unittest
 import pytz
@@ -533,7 +534,7 @@ class DeactivateCurrentPeriodTests(unittest.TestCase):
                                                 calendar_year=2015,
                                                 ridership=700,
                                                 route_id=route.id,
-                                                season_timestamp=self.timestamp)
+                                                measurement_timestamp=self.timestamp)
         self.session.add(daily_ridership)
         self.session.commit()
 
@@ -574,14 +575,14 @@ class HandleRidershipCellTests(unittest.TestCase):
                                                 day_of_week='saturday',
                                                 season='fall',
                                                 calendar_year=2013,
-                                                season_timestamp=self.timestamp,
+                                                measurement_timestamp=self.timestamp,
                                                 ridership=7000,
                                                 route_id=route.id)
         hourly_ridership = models.ServiceHourRidership(created_on=datetime.now(),
                                                        is_current=True,
                                                        day_of_week='saturday',
                                                        season='fall',
-                                                       season_timestamp=self.timestamp,
+                                                       measurement_timestamp=self.timestamp,
                                                        calendar_year=2013,
                                                        ridership=70.7,
                                                        route_id=route.id)
@@ -874,7 +875,7 @@ class DeactivatePreviousSystemRidershipFacts(unittest.TestCase):
             calendar_year=2015,
             service_type='bus',
             ridership=1000,
-            season_timestamp=APP_TIMEZONE.localize(datetime(2015, 1, 1)))
+            measurement_timestamp=APP_TIMEZONE.localize(datetime(2015, 1, 1)))
         system_ridership_fact2 = models.SystemRidership(
             id=2,
             created_on=APP_TIMEZONE.localize(datetime.now()),
@@ -884,7 +885,7 @@ class DeactivatePreviousSystemRidershipFacts(unittest.TestCase):
             calendar_year=2015,
             service_type='bus',
             ridership=1000,
-            season_timestamp=APP_TIMEZONE.localize(datetime(2015, 7, 1)))
+            measurement_timestamp=APP_TIMEZONE.localize(datetime(2015, 7, 1)))
         system_ridership_fact3 = models.SystemRidership(
             id=3,
             created_on=APP_TIMEZONE.localize(datetime.now()),
@@ -894,7 +895,7 @@ class DeactivatePreviousSystemRidershipFacts(unittest.TestCase):
             calendar_year=2015,
             service_type='bus',
             ridership=1000,
-            season_timestamp=APP_TIMEZONE.localize(datetime(2015, 4, 1)))
+            measurement_timestamp=APP_TIMEZONE.localize(datetime(2015, 4, 1)))
         session.add_all([system_ridership_fact1,
                          system_ridership_fact2,
                          system_ridership_fact3])
@@ -911,6 +912,174 @@ class DeactivatePreviousSystemRidershipFacts(unittest.TestCase):
         self.assertEqual(len(post_actives), 0)
         inactives = self.session.query(models.SystemRidership).filter_by(is_active=False).all()
         self.assertEqual(len(inactives), 3)
+
+
+class UpdateSystemTrendsTests(unittest.TestCase):
+
+    def setUp(self):
+        """
+        Tested data
+
+        + ----------------------------------------------+
+        | Bus                                           |
+        + ----------------------------------------------+
+        | season/day  |   winter  |  spring  |  summer  |
+        |-------------+-----------+----------+----------+
+        | weekday     | 10,000    | 11,000   | 12,000   |
+        |-------------+-----------+----------+----------+
+        | saturday    | 10,000    | 11,000   | 12,000   |
+        |-------------+-----------+----------+----------+
+        | sunday      | 10,000    | 11,000   | 12,000   |
+        +-------------+-----------+----------+----------+
+        | Total       | 70,000    | 77,000   | 84,000   |
+        +-------------+-----------+----------+----------+
+
+
+        + ----------------------------------------------+
+        | Rail                                          |
+        + ----------------------------------------------+
+        | season/day  |   winter  |  spring  |  fall    |
+        |-------------+-----------+----------+----------+
+        | weekday     | 1,060     |  800     |  1,200   |
+        |-------------+-----------+----------+----------+
+        | saturday    | 1,090     |  900     |  1,340   |
+        |-------------+-----------+----------+----------+
+        | sunday      | 1,500     | 1,400    |  1,300   |
+        +-------------+-----------+----------+----------+
+        | Total       | 7,890     | 6,300    |  8,640   |
+        +-------------+-----------+----------+----------+
+
+        """
+        tests_path = os.path.dirname(__file__)
+        ini_config = os.path.join(tests_path, 'capmetrics.ini')
+        config_parser = configparser.ConfigParser()
+        # make parsing of config file names case-sensitive
+        config_parser.optionxform = str
+        config_parser.read(ini_config)
+        self.config = cli.parse_capmetrics_configuration(config_parser)
+        engine = create_engine(self.config['engine_url'])
+        Session = sessionmaker()
+        Session.configure(bind=engine)
+        session = Session()
+        models.Base.metadata.create_all(engine)
+        # 3 bus data points per season and day of week
+        system_ridership_fact_bus1 = models.SystemRidership(id=1, created_on=APP_TIMEZONE.localize(datetime.now()),
+            is_active=True, day_of_week='weekday', season='winter', calendar_year=2015, service_type='bus',
+            ridership=10000, measurement_timestamp=APP_TIMEZONE.localize(datetime(2015, 1, 1)))
+        system_ridership_fact_bus2 = models.SystemRidership(
+            id=2, created_on=APP_TIMEZONE.localize(datetime.now()), is_active=True,
+            day_of_week='weekday', season='spring', calendar_year=2015, service_type='bus',
+            ridership=11000, measurement_timestamp=APP_TIMEZONE.localize(datetime(2015, 4, 1)))
+        system_ridership_fact_bus3 = models.SystemRidership(
+            id=3, created_on=APP_TIMEZONE.localize(datetime.now()), is_active=True,
+            day_of_week='weekday', season='summer', calendar_year=2015, service_type='bus',
+            ridership=12000, measurement_timestamp=APP_TIMEZONE.localize(datetime(2015, 7, 1)))
+        system_ridership_fact_bus4 = models.SystemRidership(id=4, created_on=APP_TIMEZONE.localize(datetime.now()),
+            is_active=True, day_of_week='saturday', season='winter', calendar_year=2015, service_type='bus',
+            ridership=10000, measurement_timestamp=APP_TIMEZONE.localize(datetime(2015, 1, 6)))
+        system_ridership_fact_bus5 = models.SystemRidership(
+            id=5, created_on=APP_TIMEZONE.localize(datetime.now()), is_active=True,
+            day_of_week='saturday', season='spring', calendar_year=2015, service_type='bus',
+            ridership=11000, measurement_timestamp=APP_TIMEZONE.localize(datetime(2015, 4, 6)))
+        system_ridership_fact_bus6 = models.SystemRidership(id=6,
+            created_on=APP_TIMEZONE.localize(datetime.now()), is_active=True,
+            day_of_week='saturday', season='summer', calendar_year=2015, service_type='bus',
+            ridership=12000, measurement_timestamp=APP_TIMEZONE.localize(datetime(2015, 7, 6)))
+        system_ridership_fact_bus7 = models.SystemRidership(id=7,
+            created_on=APP_TIMEZONE.localize(datetime.now()), is_active=True,
+            day_of_week='sunday', season='winter', calendar_year=2015, service_type='bus',
+            ridership=10000, measurement_timestamp=APP_TIMEZONE.localize(datetime(2015, 1, 7)))
+        system_ridership_fact_bus8 = models.SystemRidership(
+            id=8, created_on=APP_TIMEZONE.localize(datetime.now()), is_active=True,
+            day_of_week='sunday', season='spring', calendar_year=2015, service_type='bus',
+            ridership=11000, measurement_timestamp=APP_TIMEZONE.localize(datetime(2015, 4, 7)))
+        system_ridership_fact_bus9 = models.SystemRidership(id=9,
+            created_on=APP_TIMEZONE.localize(datetime.now()), is_active=True,
+            day_of_week='sunday', season='summer', calendar_year=2015, service_type='bus',
+            ridership=12000, measurement_timestamp=APP_TIMEZONE.localize(datetime(2015, 7, 7)))
+        # 3 rail data points per season and day of week
+        system_ridership_fact_rail1 = models.SystemRidership(id=11,
+            created_on=APP_TIMEZONE.localize(datetime.now()),
+            is_active=True, day_of_week='weekday', season='winter', calendar_year=2015, service_type='rail',
+            ridership=1060, measurement_timestamp=APP_TIMEZONE.localize(datetime(2015, 1, 1)))
+        system_ridership_fact_rail2 = models.SystemRidership(
+            id=12, created_on=APP_TIMEZONE.localize(datetime.now()), is_active=True,
+            day_of_week='weekday', season='spring', calendar_year=2015, service_type='rail',
+            ridership=800, measurement_timestamp=APP_TIMEZONE.localize(datetime(2015, 4, 1)))
+        system_ridership_fact_rail3 = models.SystemRidership(
+            id=13, created_on=APP_TIMEZONE.localize(datetime.now()), is_active=True,
+            day_of_week='weekday', season='fall', calendar_year=2015, service_type='rail',
+            ridership=1200, measurement_timestamp=APP_TIMEZONE.localize(datetime(2015, 7, 1)))
+        system_ridership_fact_rail4 = models.SystemRidership(id=14,
+            created_on=APP_TIMEZONE.localize(datetime.now()), is_active=True,
+            day_of_week='saturday', season='winter', calendar_year=2015, service_type='rail',
+            ridership=1090, measurement_timestamp=APP_TIMEZONE.localize(datetime(2015, 1, 6)))
+        system_ridership_fact_rail5 = models.SystemRidership(
+            id=15, created_on=APP_TIMEZONE.localize(datetime.now()), is_active=True,
+            day_of_week='saturday', season='spring', calendar_year=2015, service_type='rail',
+            ridership=900, measurement_timestamp=APP_TIMEZONE.localize(datetime(2015, 4, 6)))
+        system_ridership_fact_rail6 = models.SystemRidership(id=16,
+            created_on=APP_TIMEZONE.localize(datetime.now()), is_active=True,
+            day_of_week='saturday', season='fall', calendar_year=2015, service_type='rail',
+            ridership=1340, measurement_timestamp=APP_TIMEZONE.localize(datetime(2015, 7, 6)))
+        system_ridership_fact_rail7 = models.SystemRidership(id=17,
+            created_on=APP_TIMEZONE.localize(datetime.now()), is_active=True,
+            day_of_week='sunday', season='winter', calendar_year=2015, service_type='rail',
+            ridership=1500, measurement_timestamp=APP_TIMEZONE.localize(datetime(2015, 1, 7)))
+        system_ridership_fact_rail8 = models.SystemRidership(
+            id=18, created_on=APP_TIMEZONE.localize(datetime.now()), is_active=True,
+            day_of_week='sunday', season='spring', calendar_year=2015, service_type='rail',
+            ridership=1400, measurement_timestamp=APP_TIMEZONE.localize(datetime(2015, 4, 7)))
+        system_ridership_fact_rail9 = models.SystemRidership(id=19,
+            created_on=APP_TIMEZONE.localize(datetime.now()), is_active=True,
+            day_of_week='sunday', season='fall', calendar_year=2015, service_type='rail',
+            ridership=1300, measurement_timestamp=APP_TIMEZONE.localize(datetime(2015, 7, 7)))
+        session.add_all([system_ridership_fact_bus1,
+                         system_ridership_fact_bus2,
+                         system_ridership_fact_bus3,
+                         system_ridership_fact_bus4,
+                         system_ridership_fact_bus5,
+                         system_ridership_fact_bus6,
+                         system_ridership_fact_bus7,
+                         system_ridership_fact_bus8,
+                         system_ridership_fact_bus9,
+                         system_ridership_fact_rail1,
+                         system_ridership_fact_rail2,
+                         system_ridership_fact_rail3,
+                         system_ridership_fact_rail4,
+                         system_ridership_fact_rail5,
+                         system_ridership_fact_rail6,
+                         system_ridership_fact_rail7,
+                         system_ridership_fact_rail8,
+                         system_ridership_fact_rail9])
+        session.commit()
+        self.session = session
+
+    def test_initial_trends(self):
+        etl.update_system_trends(self.session)
+        system_trends = self.session.query(models.SystemTrend).all()
+        self.assertEqual(len(system_trends), 2)
+        bus_trend = None
+        rail_trend = None
+        for st in system_trends:
+            if st.service_type == 'BUS':
+                bus_trend = st
+            else:
+                rail_trend = st
+        expected_bus_json = json.dumps([
+            ["2014-12-29T00:00:00-06:00", 70000.0],
+            ["2015-03-30T00:00:00-05:00", 77000.0],
+            ["2015-06-29T00:00:00-05:00", 84000.0]
+        ])
+        self.assertEqual(len(json.loads(bus_trend.trend)), 3, msg=bus_trend.trend)
+        self.assertEqual(bus_trend.trend, expected_bus_json, msg=bus_trend.trend)
+        expected_rail_json = json.dumps([
+            ["2014-12-29T00:00:00-06:00", 7890.0],
+            ["2015-03-30T00:00:00-05:00", 6300.0],
+            ["2015-09-28T00:00:00-05:00", 8640.0]
+        ])
+        self.assertEqual(rail_trend.trend, expected_rail_json, msg=rail_trend.trend)
+
 
 
 

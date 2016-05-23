@@ -1,12 +1,14 @@
 """
 Extract-Transform-Load functions.
 """
+from collections import OrderedDict
 import datetime
+import json
 import os
 import pytz
 import re
 from dateutil.parser import parse
-from sqlalchemy import func
+from sqlalchemy import asc, desc, func
 from sqlalchemy.orm.exc import NoResultFound
 import xlrd
 from xlrd.biffh import XLRDError
@@ -254,7 +256,7 @@ def handle_ridership_cell(route_number, period, ridership_cell,
                                         day_of_week=period['day_of_week'],
                                         season=period['season'],
                                         calendar_year=period['year'],
-                                        season_timestamp=period['timestamp'],
+                                        measurement_timestamp=period['timestamp'],
                                         ridership=ridership_cell.value,
                                         created_on=APP_TIMEZONE.localize(datetime.datetime.now()))
         session.add(new_ridership)
@@ -301,6 +303,16 @@ def parse_worksheet_ridership(worksheet, periods, ridership_model,
 
 
 def update_ridership(file_location, worksheet_names, ridership_model, session):
+    """
+
+    Args:
+        file_location (str): The location of a data store Excel file.
+        worksheet_names (list): A list of strings with Excel file worksheet names.
+        ridership_model: A ridership model, such as :class:`~.models.DailyRidership` model.
+        session: A SQLAlchemy session.
+    Returns:
+        An :class:`~.models.ETLReport`.
+    """
     etl_report = models.ETLReport(
         created_on=APP_TIMEZONE.localize(datetime.datetime.now()),
         updates=0,
@@ -456,6 +468,13 @@ def update_route_info(file_location, session, worksheets):
 
 
 def deactivate_previous_system_ridership_facts(session):
+    """
+
+    Selects all persisted ``SystemRidership`` models that are currently
+    active and commits their ``is_active`` property to ``False``.
+    Args:
+        session: SQLAlchemy session.
+    """
     facts = session.query(models.SystemRidership).filter_by(is_active=True).all()
     for fact in facts:
         fact.is_active = False
@@ -463,7 +482,29 @@ def deactivate_previous_system_ridership_facts(session):
 
 
 def add_ridership_fact(system_facts, fact):
-    timestamp = fact.season_timestamp.isoformat()
+    """
+    Fills the passed dict with a mapping of ISO 8601 timestamp keys
+    to a ridership data dict. The ridership dict pairs service types
+    with ridership facts, as well as a ``temporal`` key associated with a dict
+    containing ``day_of_week``, ``season``, and ``calendar_year`` data. Example::
+
+        {
+            '2015-01-02T03:04:56-00:00': {
+                'BUS': 10100,
+                'RAIL': 220,
+                'temporal': {
+                    'day_of_week': 'weekday',
+                    'season': 'winter',
+                    'calendar_year': 2015
+                }
+            }
+        }
+
+    Args:
+        system_facts (dict):
+        fact (~`.models.DailyRidership`): A ~`.models.DailyRidership` instance.
+    """
+    timestamp = fact.measurement_timestamp.isoformat()
     if timestamp in system_facts:
         ridership_by_service = system_facts[timestamp]
         if fact.route.service_type in ridership_by_service:
@@ -483,7 +524,15 @@ def add_ridership_fact(system_facts, fact):
 
 
 def store_system_ridership(system_facts, session):
-    for season_timestamp, ridership_by_service in system_facts.items():
+    """
+    Creates and saves :class:`~.models.SystemRidership` models from
+    passed data.
+
+    Args:
+        system_facts (dict): System ridership data.
+        session: A SQLAlchemy session.
+    """
+    for measurement_timestamp, ridership_by_service in system_facts.items():
         for service_type, ridership in ridership_by_service.items():
             if service_type is not 'temporal':
                 data = {
@@ -493,7 +542,7 @@ def store_system_ridership(system_facts, session):
                     'is_active': True,
                     'ridership': ridership,
                     'season': ridership_by_service['temporal']['season'],
-                    'season_timestamp': parse(season_timestamp),
+                    'measurement_timestamp': parse(measurement_timestamp),
                     'service_type': service_type
                 }
                 system_ridership = models.SystemRidership(**data)
@@ -502,12 +551,112 @@ def store_system_ridership(system_facts, session):
 
 
 def update_system_ridership(session):
+    """
+    Updates the persisted ``SystemRidership`` models; it 'deactivates' the
+    existing models and then saves new models.
+
+    Args:
+        session: An SQLAlchemy session.
+    """
     deactivate_previous_system_ridership_facts(session)
     ridership_facts = session.query(models.DailyRidership).filter_by(is_current=True).all()
     system_facts = dict()
     for fact in ridership_facts:
         add_ridership_fact(system_facts, fact)
     store_system_ridership(system_facts, session)
+
+
+def to_service_facts(ridership_facts):
+    """
+
+    Dictionary key hierarchy for aggregation.
+
+    A ``service_facts`` dict is keyed to a service type string. That
+    is associated with a ``season_facts`` dict which has
+    keys for the different ISO 8601 timestamps for the first day of
+    a fact's season - regardless of the original day of week for the fact.
+    Each seasonal key is matched with a dict that keys day types in the
+    data with a single ridership number.
+
+    Example::
+
+        {
+            'BUS': {
+                '2015-01-02T00:00:00-00:00': {
+                    'weekday': 10100,
+                    'saturday': 2300,
+                    'sunday': 400
+                }
+            }
+        }
+
+    Args:
+        ridership_facts (list): A list of ridership models.
+    """
+    service_facts = dict()
+    for fact in ridership_facts:
+        # we use the 'weekday' timestamp for the aggregated data
+        measurement_timestamp = get_period_timestamp('weekday', fact.season, fact.calendar_year).isoformat()
+        if fact.service_type.upper() in service_facts:
+            season_facts = service_facts[fact.service_type.upper()]
+            if measurement_timestamp in season_facts:
+                # add ridership for day of week
+                by_day = season_facts[measurement_timestamp]
+                by_day[fact.day_of_week.lower()] = fact.ridership
+            else:
+                # initialize fact's timestamp down to ridership by day of week
+                by_day = {
+                    fact.day_of_week.lower(): fact.ridership
+                }
+                season_facts[measurement_timestamp] = by_day
+        # initialize from fact's service type down to ridership for day of week
+        else:
+            by_day = {
+                fact.day_of_week.lower(): fact.ridership
+            }
+            season_facts = OrderedDict([(measurement_timestamp, by_day)])
+            service_facts[fact.service_type.upper()] = season_facts
+    return service_facts
+
+
+def update_system_trends(session):
+    """
+    Updates :class:`~.models.SystemTrend` models based on existing system trend data
+    for service types.
+
+    Args:
+        session: SQL Alchemy session.
+    """
+    ridership_facts = session.query(models.SystemRidership)\
+                             .filter_by(is_active=True)\
+                             .order_by(asc(models.SystemRidership.measurement_timestamp))\
+                             .all()
+    service_facts = to_service_facts(ridership_facts)
+    # aggregate the day of week data for a service type's season into one total
+    for service_type, timestamp_ridership_facts in service_facts.items():
+        service_trend = []
+        for timestamp, ridership_by_day in timestamp_ridership_facts.items():
+            total = 0
+            for day_of_week, ridership in ridership_by_day.items():
+                if day_of_week.lower() == 'weekday':
+                    total += (5 * ridership)
+                else:
+                    total += ridership
+            service_trend.append([timestamp, total])
+        # now, persist trend into models
+        update_timestamp = APP_TIMEZONE.localize(datetime.datetime.now())
+        try:
+            system_trend = session.query(models.SystemTrend)\
+                                  .filter_by(service_type=service_type)\
+                                  .one()
+            system_trend.trend = json.dumps(service_trend)
+            system_trend.updated_on = update_timestamp
+        except NoResultFound:
+            system_trend = models.SystemTrend(service_type=service_type,
+                                              trend=json.dumps(service_trend),
+                                              updated_on=update_timestamp)
+            session.add(system_trend)
+    session.commit()
 
 
 def run_excel_etl(data_source_file, session, configuration):
@@ -542,5 +691,6 @@ def run_excel_etl(data_source_file, session, configuration):
     session.add(hourly_ridership_report)
     session.commit()
     update_system_ridership(session)
+    update_system_trends(session)
     session.close()
 

@@ -202,6 +202,90 @@ class MergeRouteDataTests(unittest.TestCase):
         self.assertTrue('3' in merged_keys)
 
 
+class GetLatestMeasurementTimestampTests(unittest.TestCase):
+
+    def setUp(self):
+        tests_path = os.path.dirname(__file__)
+        self.test_excel = os.path.join(tests_path, 'data/test_cmta_data_single.xls')
+        excel_book = xlrd.open_workbook(filename=self.test_excel)
+        self.worksheet = excel_book.sheet_by_name('Ridership by Route Weekday')
+        self.periods = etl.get_periods(self.worksheet)
+        self.engine = create_engine('sqlite:///:memory:')
+        Session = sessionmaker()
+        Session.configure(bind=self.engine)
+        session = Session()
+        models.Base.metadata.create_all(self.engine)
+        self.session = session
+        etl.update_route_info(self.test_excel,
+                              session,
+                              ['Ridership by Route Weekday'])
+
+        etl.parse_worksheet_ridership(self.worksheet, self.periods, models.DailyRidership,
+                                      self.session)
+
+    def tearDown(self):
+        models.Base.metadata.drop_all(self.engine)
+
+    def test_ordering(self):
+        latest = etl.get_latest_measurement_timestamp(self.session)
+        self.assertEqual(latest.year, 2015)
+        self.assertEqual(latest.month, 6)
+        self.assertEqual(latest.day, 29)
+
+
+class GetHighRidershipRoutesTests(unittest.TestCase):
+
+    def setUp(self):
+        tests_path = os.path.dirname(__file__)
+        ini_config = os.path.join(tests_path, 'capmetrics.ini')
+        config_parser = configparser.ConfigParser()
+        # make parsing of config file names case-sensitive
+        config_parser.optionxform = str
+        config_parser.read(ini_config)
+        self.config = cli.parse_capmetrics_configuration(config_parser)
+        self.engine = create_engine(self.config['engine_url'])
+        Session = sessionmaker()
+        Session.configure(bind=self.engine)
+        session = Session()
+        models.Base.metadata.create_all(self.engine)
+        self.session = session
+
+    def tearDown(self):
+        models.Base.metadata.drop_all(self.engine)
+
+    def test_routes(self):
+        # This test takes a long time, as it perform the full etl task for a realistic file
+
+
+        data_source_file = './tests/data/test_cmta_data.xls'
+        file_location = os.path.abspath(data_source_file)
+        daily_worksheets = self.config['daily_ridership_worksheets']
+        hourly_worksheets = self.config['hour_productivity_worksheets']
+        route_info_report = etl.update_route_info(file_location,
+                                              self.session,
+                                              daily_worksheets)
+        route_info_report.etl_type = 'route-info'
+        self.session.add(route_info_report)
+        daily_ridership_report = etl.update_ridership(file_location,
+                                                  daily_worksheets,
+                                                  models.DailyRidership,
+                                                  self.session)
+        daily_ridership_report.etl_type = 'daily-ridership'
+        self.session.add(daily_ridership_report)
+        hourly_ridership_report = etl.update_ridership(file_location,
+                                                   hourly_worksheets,
+                                                   models.ServiceHourRidership,
+                                                   self.session)
+        hourly_ridership_report.etl_type = 'hourly-ridership'
+        self.session.add(hourly_ridership_report)
+        self.session.commit()
+        self.session.close()
+        latest = etl.get_latest_measurement_timestamp(self.session)
+        routes = etl.get_high_ridership_routes(self.session, latest)
+        expected_routes = {7, 1, 300, 801, 10, 3, 20, 803, 331, 37}
+        self.assertEqual(set(routes), expected_routes)
+
+
 class ParseWorksheetRidershipTests(unittest.TestCase):
     """
     Tests etl.parse_worksheet_ridership function.
@@ -666,15 +750,18 @@ class UpdateRidershipTests(unittest.TestCase):
         config_parser.optionxform = str
         config_parser.read(ini_config)
         self.config = cli.parse_capmetrics_configuration(config_parser)
-        engine = create_engine(self.config['engine_url'])
+        self.engine = create_engine(self.config['engine_url'])
         Session = sessionmaker()
-        Session.configure(bind=engine)
+        Session.configure(bind=self.engine)
         session = Session()
-        models.Base.metadata.create_all(engine)
+        models.Base.metadata.create_all(self.engine)
         self.session = session
         etl.update_route_info('./tests/data/test_cmta_data_single.xls',
                               session,
                               ['Ridership by Route Weekday'])
+
+    def tearDown(self):
+        models.Base.metadata.drop_all(self.engine)
 
     def test_etl_reports(self):
         report = etl.update_ridership('./tests/data/test_cmta_data_single.xls',
@@ -694,18 +781,28 @@ class RunExcelETLTests(unittest.TestCase):
         config_parser.optionxform = str
         config_parser.read(ini_config)
         self.config = cli.parse_capmetrics_configuration(config_parser)
-        engine = create_engine(self.config['engine_url'])
+        self.engine = create_engine(self.config['engine_url'])
         Session = sessionmaker()
-        Session.configure(bind=engine)
+        Session.configure(bind=self.engine)
         session = Session()
-        models.Base.metadata.create_all(engine)
+        models.Base.metadata.create_all(self.engine)
         self.session = session
 
-    def test_etl_reports(self):
+    def tearDown(self):
+        models.Base.metadata.drop_all(self.engine)
+
+    def test_output(self):
         # This test takes a long time, as it perform the full etl task for a realistic file
         etl.run_excel_etl('./tests/data/test_cmta_data.xls', self.session, self.config)
         reports = self.session.query(models.ETLReport).all()
         self.assertTrue(len(reports), 3)
+        high_ridership_routes = self.session.query(models.Route) \
+            .filter_by(is_high_ridership=True) \
+            .all()
+        self.assertEqual(len(high_ridership_routes), 10)
+        returned_routes = set([route.route_number for route in high_ridership_routes])
+        expected_routes = {7, 1, 300, 801, 10, 3, 20, 803, 331, 37}
+        self.assertEqual(returned_routes, expected_routes)
 
 
 class CalibrateDayOfWeekTests(unittest.TestCase):
@@ -861,11 +958,11 @@ class DeactivatePreviousSystemRidershipFacts(unittest.TestCase):
         config_parser.optionxform = str
         config_parser.read(ini_config)
         self.config = cli.parse_capmetrics_configuration(config_parser)
-        engine = create_engine(self.config['engine_url'])
+        self.engine = create_engine(self.config['engine_url'])
         Session = sessionmaker()
-        Session.configure(bind=engine)
+        Session.configure(bind=self.engine)
         session = Session()
-        models.Base.metadata.create_all(engine)
+        models.Base.metadata.create_all(self.engine)
         system_ridership_fact1 = models.SystemRidership(
             id=1,
             created_on=APP_TIMEZONE.localize(datetime.now()),
@@ -901,6 +998,9 @@ class DeactivatePreviousSystemRidershipFacts(unittest.TestCase):
                          system_ridership_fact3])
         session.commit()
         self.session = session
+
+    def tearDown(self):
+        models.Base.metadata.drop_all(self.engine)
 
     def test_deactivation(self):
         all_models = self.session.query(models.SystemRidership).all()
@@ -957,11 +1057,11 @@ class UpdateSystemTrendsTests(unittest.TestCase):
         config_parser.optionxform = str
         config_parser.read(ini_config)
         self.config = cli.parse_capmetrics_configuration(config_parser)
-        engine = create_engine(self.config['engine_url'])
+        self.engine = create_engine(self.config['engine_url'])
         Session = sessionmaker()
-        Session.configure(bind=engine)
+        Session.configure(bind=self.engine)
         session = Session()
-        models.Base.metadata.create_all(engine)
+        models.Base.metadata.create_all(self.engine)
         # 3 bus data points per season and day of week
         system_ridership_fact_bus1 = models.SystemRidership(id=1, created_on=APP_TIMEZONE.localize(datetime.now()),
             is_active=True, day_of_week='weekday', season='winter', calendar_year=2015, service_type='bus',
@@ -1055,6 +1155,9 @@ class UpdateSystemTrendsTests(unittest.TestCase):
         session.commit()
         self.session = session
 
+    def tearDown(self):
+        models.Base.metadata.drop_all(self.engine)
+
     def test_initial_trends(self):
         etl.update_system_trends(self.session)
         system_trends = self.session.query(models.SystemTrend).all()
@@ -1081,7 +1184,73 @@ class UpdateSystemTrendsTests(unittest.TestCase):
         self.assertEqual(rail_trend.trend, expected_rail_json, msg=rail_trend.trend)
 
 
+class UpdateHighRidershipRoutes(unittest.TestCase):
 
+    def setUp(self):
+        tests_path = os.path.dirname(__file__)
+        self.engine = create_engine('sqlite:///:memory:')
+        Session = sessionmaker()
+        Session.configure(bind=self.engine)
+        self.session = Session()
+        models.Base.metadata.create_all(self.engine)
+        # creating 10 routes and daily ridership models
+        for number in range(1, 31):
+            route = models.Route(id=number,
+                                 route_number=number,
+                                 route_name='TEST ROUTE {0}'.format(number),
+                                 service_type='LOCAL')
+            self.session.add(route)
+            # starting ridership is based on the route number
+            ridership = 1000 + (10 * number)
+            timestamp = etl.get_period_timestamp('weekday', 'spring', 2015)
+            daily_ridership = models.DailyRidership(created_on=datetime.now(),
+                                                    is_current=True,
+                                                    day_of_week='weekday',
+                                                    season='spring',
+                                                    calendar_year=2015,
+                                                    ridership=ridership,
+                                                    route_id=route.id,
+                                                    measurement_timestamp=timestamp)
+            self.session.add(daily_ridership)
+        self.session.commit()
+        etl.update_high_ridership_routes(self.session, 10)
 
+    def tearDown(self):
+        models.Base.metadata.drop_all(self.engine)
 
+    def test_initial_rankings(self):
+        high_ridership_routes = self.session.query(models.Route)\
+                                    .filter_by(is_high_ridership=True)\
+                                    .all()
+        self.assertEqual(len(high_ridership_routes), 10)
+        returned_routes = set([route.route_number for route in high_ridership_routes])
+        expected_routes = {21, 22, 23, 24, 25, 26, 27, 28, 29, 30}
+        self.assertEqual(returned_routes, expected_routes)
 
+    def test_single_update(self):
+        route_1 = self.session.query(models.DailyRidership).filter_by(route_id=1).one()
+        route_1.ridership = 5000
+        self.session.commit()
+        etl.update_high_ridership_routes(self.session, 10)
+        high_ridership_routes = self.session.query(models.Route) \
+            .filter_by(is_high_ridership=True) \
+            .all()
+        self.assertEqual(len(high_ridership_routes), 10)
+        returned_routes = set([route.route_number for route in high_ridership_routes])
+        expected_routes = {1, 22, 23, 24, 25, 26, 27, 28, 29, 30}
+        self.assertEqual(returned_routes, expected_routes)
+
+    def test_updates(self):
+        route_1 = self.session.query(models.DailyRidership).filter_by(route_id=1).one()
+        route_5 = self.session.query(models.DailyRidership).filter_by(route_id=5).one()
+        route_1.ridership = 10000
+        route_5.ridership = 5000
+        self.session.commit()
+        etl.update_high_ridership_routes(self.session, 10)
+        high_ridership_routes = self.session.query(models.Route) \
+            .filter_by(is_high_ridership=True) \
+            .all()
+        self.assertEqual(len(high_ridership_routes), 10)
+        returned_routes = set([route.route_number for route in high_ridership_routes])
+        expected_routes = {1, 5, 23, 24, 25, 26, 27, 28, 29, 30}
+        self.assertEqual(returned_routes, expected_routes)

@@ -103,6 +103,43 @@ def calibrate_day_of_week(timestamp, day_of_week):
     return timestamp
 
 
+def get_latest_measurement_timestamp(session):
+    """
+    Queries :class:``~.models.DailyRidership`` models to find the
+    latest (most recent) measurement timestamp (which is a datetime object).
+
+    Args:
+        session: SQLAlchemy session.
+
+    Returns:
+        datetime.datetime
+    """
+    latest = session.query(models.DailyRidership)\
+                    .filter_by(day_of_week='weekday')\
+                    .order_by(desc(models.DailyRidership.measurement_timestamp))\
+                    .first()
+    return latest.measurement_timestamp
+
+
+def get_high_ridership_routes(session, timestamp, size=10):
+    """
+    Determines the ``Routes`` with highest ``DailyRidership`` counts
+    of ridership.
+
+    Args:
+        session: SQLAlchemy session
+        timestamp: A datetime object serving as the timestamp that will filter ridership data.
+        size: The number of routes to return. The default is 10, so the 'top ten' routes are returned.
+
+    Returns:
+        list
+    """
+    top_riderships = session.query(models.DailyRidership)\
+           .filter_by(day_of_week='weekday', measurement_timestamp=timestamp)\
+           .order_by(desc(models.DailyRidership.ridership))[0:size]
+    return [top.route.route_number for top in top_riderships]
+
+
 def get_period_timestamp(day_of_week, season, calendar_year):
     """
     Selects a Python datetime timestamp to represent a 'season' as
@@ -659,6 +696,18 @@ def update_system_trends(session):
     session.commit()
 
 
+def update_high_ridership_routes(session, size=10):
+    session.query(models.Route).update({'is_high_ridership': False},
+                                       synchronize_session=False)
+    latest = get_latest_measurement_timestamp(session)
+    route_numbers = get_high_ridership_routes(session, latest, size)
+    session.query(models.Route)\
+           .filter(models.Route.route_number.in_(route_numbers))\
+           .update({'is_high_ridership': True},
+                   synchronize_session=False)
+    session.commit()
+
+
 def run_excel_etl(data_source_file, session, configuration):
     """
     Consumes an Excel file with CapMetro data and updates database tables
@@ -692,5 +741,6 @@ def run_excel_etl(data_source_file, session, configuration):
     session.commit()
     update_system_ridership(session)
     update_system_trends(session)
+    update_high_ridership_routes(session)
     session.close()
 

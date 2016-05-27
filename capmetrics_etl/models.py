@@ -20,6 +20,7 @@ class Route(Base):
     route_number = Column(Integer, unique=True)
     route_name = Column(String)
     service_type = Column(String)
+    is_high_ridership = Column(Boolean, default=False)
 
 
 class DailyRidership(Base):

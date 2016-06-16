@@ -1,5 +1,5 @@
 """
-The **capmetrics-etl** models represent groups of data that allow for
+The **capmetrics-etl** models represent data that allows for
 consistent comparisons of ridership and other performance data across
 time, routes, and service types.
 """

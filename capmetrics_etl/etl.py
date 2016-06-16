@@ -105,7 +105,7 @@ def calibrate_day_of_week(timestamp, day_of_week):
 
 def get_latest_measurement_timestamp(session):
     """
-    Queries :class:``~.models.DailyRidership`` models to find the
+    Queries :class:`~.models.DailyRidership` models to find the
     latest (most recent) measurement timestamp (which is a datetime object).
 
     Args:
@@ -275,7 +275,7 @@ def handle_ridership_cell(route_number, period, ridership_cell,
         ridership_cell: The spreadsheet cell being handled.
         ridership_model: The SQLAlchemy model *class* that will be persisted.
         session: The SQLAlchemy session.
-        report: An optional `~.models.ETLReport` instance. Default value is ``None``
+        report: An optional :class:`~.models.ETLReport` instance. Default value is ``None``
 
     Returns:
         The ETLReport instance if passed into function; ``None`` otherwise.
@@ -509,6 +509,7 @@ def deactivate_previous_system_ridership_facts(session):
 
     Selects all persisted ``SystemRidership`` models that are currently
     active and commits their ``is_active`` property to ``False``.
+
     Args:
         session: SQLAlchemy session.
     """
@@ -539,7 +540,7 @@ def add_ridership_fact(system_facts, fact):
 
     Args:
         system_facts (dict):
-        fact (~`.models.DailyRidership`): A ~`.models.DailyRidership` instance.
+        fact (~`.models.DailyRidership`): A :class:`~.models.DailyRidership` instance.
     """
     timestamp = fact.measurement_timestamp.isoformat()
     if timestamp in system_facts:

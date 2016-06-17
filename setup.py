@@ -20,7 +20,7 @@ setup(
     entry_points={
         'console_scripts': [
             'capmetrics=capmetrics_etl.cli:etl',
-            'capmetrics-tables=capmetrics_etl.cli.tables'
+            'capmetrics-tables=capmetrics_etl.cli:tables'
         ],
     },
     install_requires=['click', 'python-dateutil', 'pytz', 'sqlalchemy', 'xlrd'],

@@ -17,7 +17,7 @@ class Route(Base):
     """
     __tablename__ = 'route'
     id = Column(Integer, primary_key=True)
-    route_number = Column(Integer, unique=True)
+    route_number = Column(Integer, unique=True, index=True)
     route_name = Column(String)
     service_type = Column(String)
     is_high_ridership = Column(Boolean, default=False)
@@ -36,7 +36,7 @@ class DailyRidership(Base):
     season = Column(String)
     calendar_year = Column(Integer)
     ridership = Column(Float)
-    route_id = Column(Integer, ForeignKey('route.id'))
+    route_id = Column(Integer, ForeignKey('route.id'), index=True)
     route = relationship("Route", backref='daily_ridership')
     measurement_timestamp = Column(DateTime(timezone=True))
 
@@ -54,7 +54,7 @@ class ServiceHourRidership(Base):
     season = Column(String)
     calendar_year = Column(Integer)
     ridership = Column(Float)
-    route_id = Column(Integer, ForeignKey('route.id'))
+    route_id = Column(Integer, ForeignKey('route.id'), index=True)
     route = relationship("Route", backref='service_hour_ridership')
     measurement_timestamp = Column(DateTime(timezone=True))
 

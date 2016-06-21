@@ -722,17 +722,20 @@ def run_excel_etl(data_source_file, session, configuration):
     file_location = os.path.abspath(data_source_file)
     daily_worksheets = configuration['daily_ridership_worksheets']
     hourly_worksheets = configuration['hour_productivity_worksheets']
+    print('Updating route info...')
     route_info_report = update_route_info(file_location,
                                           session,
                                           daily_worksheets)
     route_info_report.etl_type = 'route-info'
     session.add(route_info_report)
+    print('Updating daily ridership...')
     daily_ridership_report = update_ridership(file_location,
                                               daily_worksheets,
                                               models.DailyRidership,
                                               session)
     daily_ridership_report.etl_type = 'daily-ridership'
     session.add(daily_ridership_report)
+    print('Updating hourly ridership...')
     hourly_ridership_report = update_ridership(file_location,
                                                hourly_worksheets,
                                                models.ServiceHourRidership,
@@ -740,8 +743,11 @@ def run_excel_etl(data_source_file, session, configuration):
     hourly_ridership_report.etl_type = 'hourly-ridership'
     session.add(hourly_ridership_report)
     session.commit()
+    print('Updating system ridership...')
     update_system_ridership(session)
+    print('Updating system trends...')
     update_system_trends(session)
+    print('Updating high ridership routes...')
     update_high_ridership_routes(session)
     session.close()
 

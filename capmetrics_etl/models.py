@@ -104,3 +104,12 @@ class ETLReport(Base):
     updates = Column(Integer)
     total_models = Column(Integer)
 
+
+class PerformanceDocument(Base):
+    """JSON API documents with performance metrics for system trends
+    and individual routes."""
+    __tablename__ = 'performance_document'
+    id = Column(Integer, primary_key=True)
+    document = Column(String)
+    name = Column(String, index=True)
+    updated_on = Column(DateTime(timezone=True))

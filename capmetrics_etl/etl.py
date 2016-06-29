@@ -13,6 +13,7 @@ from sqlalchemy.orm.exc import NoResultFound
 import xlrd
 from xlrd.biffh import XLRDError
 from . import models
+from . import performance_documents as perfdocs
 
 TIMEZONE_NAME = 'America/Chicago'
 APP_TIMEZONE = pytz.timezone(TIMEZONE_NAME)
@@ -87,7 +88,9 @@ def calibrate_day_of_week(timestamp, day_of_week):
             used as the substitute for 'weekday'.
 
     Returns:
-        The Python datetime timestamp with date that conforms to required day of week.
+        The Python datetime timestamp with date that conforms to required day of week in
+        CMTA's Central Time ('America/Chicago'). The returned timestamp for storage is in
+        UTC timezone. Client applications must localize the UTC back into Central.
     """
     target_day = 1
     if day_of_week == 'saturday':
@@ -100,7 +103,7 @@ def calibrate_day_of_week(timestamp, day_of_week):
         return timestamp
     difference = target_day - current_day
     timestamp = timestamp + datetime.timedelta(days=difference)
-    return timestamp
+    return timestamp.astimezone(pytz.utc)
 
 
 def get_latest_measurement_timestamp(session):
@@ -158,7 +161,7 @@ def get_period_timestamp(day_of_week, season, calendar_year):
         calendar_year (int): The calendar year.
 
     Returns:
-        A Python datetime object that represents that 'season'.
+        A Python datetime object that represents that 'season'. It's timezone is UTC.
     """
     month = 1
     if season == 'spring':
@@ -167,9 +170,11 @@ def get_period_timestamp(day_of_week, season, calendar_year):
         month = 7
     elif season == 'fall':
         month = 10
+    # timezone aware timestamp for a central 'America/Chicago' timezone
     timestamp = APP_TIMEZONE.localize(datetime.datetime(year=calendar_year,
                                                         month=month,
                                                         day=1))
+    # returns a UTC (not 'America/Chicago') timezone as it will be persisted
     return calibrate_day_of_week(timestamp, day_of_week.lower())
 
 
@@ -193,6 +198,7 @@ def find_period(worksheet, periods, column_index, minimum_search=10):
             season, year = get_season_and_year(cell.value)
             day_of_week = extract_day_of_week(row_index, column_index, worksheet)
             if season and year and day_of_week:
+                # The timestamp is in UTC timezone
                 period_timestamp = get_period_timestamp(day_of_week, season.lower(), int(year))
                 periods[str(column_index)] = {
                     'column': column_index,
@@ -295,7 +301,7 @@ def handle_ridership_cell(route_number, period, ridership_cell,
                                         calendar_year=period['year'],
                                         measurement_timestamp=period['timestamp'],
                                         ridership=ridership_cell.value,
-                                        created_on=APP_TIMEZONE.localize(datetime.datetime.now()))
+                                        created_on=datetime.datetime.now(tz=pytz.utc))
         session.add(new_ridership)
         if report:
             report.creates += 1
@@ -351,7 +357,7 @@ def update_ridership(file_location, worksheet_names, ridership_model, session):
         An :class:`~.models.ETLReport`.
     """
     etl_report = models.ETLReport(
-        created_on=APP_TIMEZONE.localize(datetime.datetime.now()),
+        created_on=datetime.datetime.now(tz=pytz.utc),
         updates=0,
         creates=0,
         total_models=None
@@ -485,7 +491,7 @@ def update_route_info(file_location, session, worksheets):
         :class:`~.models.ETLReport`: A report with basic ETL job metrics
     """
     etl_report = models.ETLReport(
-        created_on=APP_TIMEZONE.localize(datetime.datetime.now()),
+        created_on=datetime.datetime.now(tz=pytz.utc),
         updates=0,
         creates=0,
         total_models=None
@@ -575,7 +581,7 @@ def store_system_ridership(system_facts, session):
             if service_type is not 'temporal':
                 data = {
                     'calendar_year': ridership_by_service['temporal']['calendar_year'],
-                    'created_on': APP_TIMEZONE.localize(datetime.datetime.now()),
+                    'created_on': datetime.datetime.now(pytz.utc),
                     'day_of_week': ridership_by_service['temporal']['day_of_week'],
                     'is_active': True,
                     'ridership': ridership,
@@ -682,7 +688,7 @@ def update_system_trends(session):
                     total += ridership
             service_trend.append([timestamp, total])
         # now, persist trend into models
-        update_timestamp = APP_TIMEZONE.localize(datetime.datetime.now())
+        update_timestamp = datetime.datetime.now(tz=pytz.utc)
         try:
             system_trend = session.query(models.SystemTrend)\
                                   .filter_by(service_type=service_type)\
@@ -693,6 +699,7 @@ def update_system_trends(session):
             system_trend = models.SystemTrend(service_type=service_type,
                                               trend=json.dumps(service_trend),
                                               updated_on=update_timestamp)
+
             session.add(system_trend)
     session.commit()
 
@@ -749,5 +756,7 @@ def run_excel_etl(data_source_file, session, configuration):
     update_system_trends(session)
     print('Updating high ridership routes...')
     update_high_ridership_routes(session)
+    print('Updating performance documents...')
+    perfdocs.update(session)
     session.close()
 

@@ -1,5 +1,6 @@
 import configparser
 import os
+import re
 import unittest
 from click.testing import CliRunner
 from capmetrics_etl import cli
@@ -38,8 +39,9 @@ class ETLCommandTests(unittest.TestCase):
         click_runner = CliRunner()
         arguments = ['./tests/data/test_cmta_data_single.xls', self.test_config]
         result = click_runner.invoke(cli.etl, arguments)
-        expected_message = 'Capmetrics Excel ETL starting...\nCapmetrics Excel ETL completed.'
-        self.assertEqual(expected_message, result.output.strip(), msg=result)
+        expected_message_start = r'Capmetrics Excel ETL starting...'
+        message_regex = re.compile(expected_message_start)
+        self.assertTrue(message_regex.match(str(result.output.strip())), msg=result)
 
 
 class TablesCommandTests(unittest.TestCase):

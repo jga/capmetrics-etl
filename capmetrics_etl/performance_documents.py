@@ -19,22 +19,22 @@ class PerformanceDocumentEncoder(json.JSONEncoder):
 def transform_ridership_collection(riderships, type_name, route_id, included):
     resource_identifiers = []
     for ridership in riderships:
-        identification = [('id', ridership.id), ('type', type_name)]
+        identification = [('id', str(ridership.id)), ('type', type_name)]
         resource_identifiers.append(OrderedDict(identification))
         attributes = {
-            'created-on': ridership.created_on,
+            'created-on': '{0}Z'.format(ridership.created_on.isoformat()),
             'is-current': ridership.is_current,
             'day-of-week': ridership.day_of_week,
             'season': ridership.season,
             'calendar-year': ridership.calendar_year,
             'ridership': ridership.ridership,
-            'measurement-timestamp': ridership.measurement_timestamp
+            'measurement-timestamp': '{0}Z'.format(ridership.measurement_timestamp.isoformat())
         }
         relationships = {
             'route': {
                 'data': {
-                    'id': route_id,
-                    'type': 'route'
+                    'id': str(route_id),
+                    'type': 'routes'
                 }
             }
         }
@@ -61,17 +61,16 @@ def build_route_document(route):
         'daily-riderships': {'data': daily_ridership_identifiers},
         'service-hour-riderships': {'data': service_hour_ridership_identifiers}
     }
-    identification = [('id', route.id), ('type', 'routes')]
-    document = OrderedDict(identification)
-    document['attributes'] = {
+    identification = [('id', str(route.id)), ('type', 'routes')]
+    primary_data = OrderedDict(identification)
+    primary_data['attributes'] = {
         'route-number': route.route_number,
         'route-name': route.route_name,
         'service-type': route.service_type,
         'is-high-ridership': route.is_high_ridership
     }
-    document['relationships'] = relationships
-    document['included'] = included
-    return document
+    primary_data['relationships'] = relationships
+    return json.dumps({'data': primary_data, 'included': included})
 
 
 def build_system_trends_document(system_trends):
@@ -116,11 +115,18 @@ def update_system_trends_document(session):
 def update_route_documents(session):
     routes = session.query(models.Route).all()
     for route in routes:
-        document = build_route_document(route)
         name = 'route-{0}'.format(route.id)
-        performance_document = session.query(models.PerformanceDocument)\
+        update_timestamp = datetime.datetime.now(tz=pytz.utc)
+        document = build_route_document(route)
+        try:
+            performance_document = session.query(models.PerformanceDocument)\
                                       .filter_by(name=name).one()
-        performance_document.document = document
+            performance_document.document = document
+        except NoResultFound:
+            route_doc = models.PerformanceDocument(name=name,
+                                                   document=document,
+                                                   updated_on=update_timestamp)
+            session.add(route_doc)
     session.commit()
 
 

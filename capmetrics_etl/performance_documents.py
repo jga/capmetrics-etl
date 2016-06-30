@@ -21,14 +21,16 @@ def transform_ridership_collection(riderships, type_name, route_id, included):
     for ridership in riderships:
         identification = [('id', str(ridership.id)), ('type', type_name)]
         resource_identifiers.append(OrderedDict(identification))
+        zulu_created = ridership.created_on.isoformat().replace('+00:00', 'Z')
+        zulu_measurement = ridership.measurement_timestamp.isoformat().replace('+00:00', 'Z')
         attributes = {
-            'created-on': '{0}Z'.format(ridership.created_on.isoformat()),
+            'created-on': zulu_created,
             'is-current': ridership.is_current,
             'day-of-week': ridership.day_of_week,
             'season': ridership.season,
             'calendar-year': ridership.calendar_year,
             'ridership': ridership.ridership,
-            'measurement-timestamp': '{0}Z'.format(ridership.measurement_timestamp.isoformat())
+            'measurement-timestamp': zulu_measurement
         }
         relationships = {
             'route': {
@@ -76,11 +78,12 @@ def build_route_document(route):
 def build_system_trends_document(system_trends):
     primary_data = []
     for system_trend in system_trends:
+        zulu_timestamp = system_trend.updated_on.isoformat().replace('+00:00', 'Z')
         attributes = {
             # JavaScript expects a 'Z' to represent Zulu Time (i.e. UTC timezone)
             # Python's isoformat function does not append the 'Z' to UTC timezone datetime
             # objects.
-            'updated-on': '{0}Z'.format(system_trend.updated_on.isoformat()),
+            'updated-on': zulu_timestamp,
             'trend': system_trend.trend,
             'service-type': system_trend.service_type
         }
@@ -115,7 +118,7 @@ def update_system_trends_document(session):
 def update_route_documents(session):
     routes = session.query(models.Route).all()
     for route in routes:
-        name = 'route-{0}'.format(route.id)
+        name = 'route-{0}'.format(route.route_number)
         update_timestamp = datetime.datetime.now(tz=pytz.utc)
         document = build_route_document(route)
         try:

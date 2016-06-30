@@ -81,7 +81,7 @@ class BuildRouteDocumentTests(unittest.TestCase):
         ro_relationships = resource_object['relationships']
         self.assertEqual(ro_relationships['route']['data']['id'], '1')
         self.assertEqual(ro_relationships['route']['data']['type'], 'routes')
-        
+
 
 class TransformRidershipCollectionTests(unittest.TestCase):
 

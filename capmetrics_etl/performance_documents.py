@@ -21,8 +21,10 @@ def transform_ridership_collection(riderships, type_name, route_id, included):
     for ridership in riderships:
         identification = [('id', str(ridership.id)), ('type', type_name)]
         resource_identifiers.append(OrderedDict(identification))
-        zulu_created = ridership.created_on.isoformat().replace('+00:00', 'Z')
-        zulu_measurement = ridership.measurement_timestamp.isoformat().replace('+00:00', 'Z')
+        zulu_created = ridership.created_on.isoformat().replace('+00:00', '')
+        zulu_created = '{0}Z'.format(zulu_created)
+        zulu_measurement = ridership.measurement_timestamp.isoformat().replace('+00:00', '')
+        zulu_measurement = '{0}Z'.format(zulu_measurement)
         attributes = {
             'created-on': zulu_created,
             'is-current': ridership.is_current,
@@ -78,7 +80,8 @@ def build_route_document(route):
 def build_system_trends_document(system_trends):
     primary_data = []
     for system_trend in system_trends:
-        zulu_timestamp = system_trend.updated_on.isoformat().replace('+00:00', 'Z')
+        zulu_timestamp = system_trend.updated_on.isoformat().replace('+00:00', '')
+        zulu_timestamp = '{0}Z'.format(zulu_timestamp)
         attributes = {
             # JavaScript expects a 'Z' to represent Zulu Time (i.e. UTC timezone)
             # Python's isoformat function does not append the 'Z' to UTC timezone datetime

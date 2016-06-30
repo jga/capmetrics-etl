@@ -35,7 +35,9 @@ def etl(file, config, test):
         hour_worksheets = capmetrics_configuration['hour_productivity_worksheets']
         worksheet_names = daily_worksheets + hour_worksheets
         if check_quality(file, worksheet_names):
-            engine = create_engine(capmetrics_configuration['engine_url'])
+            connection_configuration = {"options": "-c timezone=utc"}
+            engine = create_engine(capmetrics_configuration['engine_url'],
+                                   connect_args=connection_configuration)
             has_table = engine.dialect.has_table(engine.connect(), 'route')
             if not has_table:
                 create_tables(engine)

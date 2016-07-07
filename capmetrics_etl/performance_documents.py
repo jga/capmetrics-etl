@@ -9,13 +9,6 @@ TIMEZONE_NAME = 'America/Chicago'
 APP_TIMEZONE = pytz.timezone(TIMEZONE_NAME)
 
 
-class PerformanceDocumentEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, datetime.datetime):
-            return obj.isoformat()
-        return json.JSONEncoder.default(self, obj)
-
-
 def transform_ridership_collection(riderships, type_name, route_id, included):
     resource_identifiers = []
     for ridership in riderships:
@@ -92,30 +85,13 @@ def build_system_trends_document(system_trends):
         }
         resource_object = OrderedDict(
             [
-                ('id', system_trend.id),
+                ('id', str(system_trend.id)),
                 ('type', 'system-trends'),
                 ('attributes', attributes)
             ]
         )
         primary_data.append(resource_object)
     return json.dumps({'data': primary_data})
-
-
-def update_system_trends_document(session):
-    system_trends = session.query(models.SystemTrend).all()
-    document = build_system_trends_document(system_trends)
-    update_timestamp = datetime.datetime.now(tz=pytz.utc)
-    try:
-        system_trends_doc = session.query(models.PerformanceDocument)\
-                               .filter_by(name='system-trends').one()
-        system_trends_doc.document = document
-        system_trends_doc.updated_on = update_timestamp
-    except NoResultFound:
-        system_trends_doc = models.PerformanceDocument(name='system-trends',
-                                                       document=document,
-                                                       updated_on=update_timestamp)
-        session.add(system_trends_doc)
-    session.commit()
 
 
 def update_route_documents(session):
@@ -136,6 +112,82 @@ def update_route_documents(session):
     session.commit()
 
 
+def update_system_trends_document(session):
+    system_trends = session.query(models.SystemTrend).all()
+    document = build_system_trends_document(system_trends)
+    update_timestamp = datetime.datetime.now(tz=pytz.utc)
+    try:
+        system_trends_doc = session.query(models.PerformanceDocument) \
+            .filter_by(name='system-trends').one()
+        system_trends_doc.document = document
+        system_trends_doc.updated_on = update_timestamp
+    except NoResultFound:
+        system_trends_doc = models.PerformanceDocument(name='system-trends',
+                                                       document=document,
+                                                       updated_on=update_timestamp)
+        session.add(system_trends_doc)
+    session.commit()
+
+
+class RouteCompendiumEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, models.DailyRidership):
+            return {
+                'id': str(obj.id),
+                'createdOn': obj.created_on.isoformat(),
+                'isCurrent': obj.is_current,
+                'dayOfWeek': obj.day_of_week,
+                'season': obj.season,
+                'calendarYear': obj.calendar_year,
+                'ridership': int(obj.ridership),
+                'routeId': obj.route_id,
+                'measurementTimestamp': obj.measurement_timestamp.isoformat()
+            }
+        return json.JSONEncoder.default(self, obj)
+
+
+def sort_compendium_riderships(compendiums):
+    for compendium in compendiums:
+        compendium['riderships'].sort(key=lambda r: r.measurement_timestamp)
+
+
+def update_top_routes(session):
+    high_ridership_routes = session.query(models.Route) \
+        .filter_by(is_high_ridership=True) \
+        .all()
+    top_routes = []
+    for route in high_ridership_routes:
+        active_ridership = session.query(models.DailyRidership).filter_by(route_id=route.id, is_current=True)
+        for ridership in active_ridership:
+            compendium = next((c for c in top_routes if c['routeNumber'] == str(route.route_number)), None)
+            if compendium:
+                compendium['riderships'].append(ridership)
+            else:
+                selector = 'top-route-viz-{0}'.format(str(route.route_number))
+                compendium = {
+                    'routeNumber': str(route.route_number),
+                    'routeName': route.route_name,
+                    'selector': selector,
+                    'riderships': [ridership]
+                }
+                top_routes.append(compendium)
+    sort_compendium_riderships(top_routes)
+    document = json.dumps(top_routes, cls=RouteCompendiumEncoder)
+    update_timestamp = datetime.datetime.now(tz=pytz.utc)
+    try:
+        top_routes_doc = session.query(models.PerformanceDocument) \
+            .filter_by(name='top-routes').one()
+        top_routes_doc.document = document
+        top_routes_doc.updated_on = update_timestamp
+    except NoResultFound:
+        top_routes_doc = models.PerformanceDocument(name='top-routes',
+                                                    document=document,
+                                                    updated_on=update_timestamp)
+        session.add(top_routes_doc)
+    session.commit()
+
+
 def update(session):
     update_system_trends_document(session)
     update_route_documents(session)
+    update_top_routes(session)

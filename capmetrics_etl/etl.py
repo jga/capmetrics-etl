@@ -138,7 +138,9 @@ def get_high_ridership_routes(session, timestamp, size=10):
         list
     """
     top_riderships = session.query(models.DailyRidership)\
-           .filter_by(day_of_week='weekday', measurement_timestamp=timestamp)\
+           .filter_by(day_of_week='weekday',
+                      measurement_timestamp=timestamp,
+                      is_current=True)\
            .order_by(desc(models.DailyRidership.ridership))[0:size]
     return [top.route.route_number for top in top_riderships]
 

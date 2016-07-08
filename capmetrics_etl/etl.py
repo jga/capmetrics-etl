@@ -14,9 +14,7 @@ import xlrd
 from xlrd.biffh import XLRDError
 from . import models
 from . import performance_documents as perfdocs
-
-TIMEZONE_NAME = 'America/Chicago'
-APP_TIMEZONE = pytz.timezone(TIMEZONE_NAME)
+from . import utils
 
 
 def check_for_headers(cell, worksheet, row_counter, worksheet_routes):
@@ -72,38 +70,6 @@ def get_season_and_year(period):
     return None, None
 
 
-def calibrate_day_of_week(timestamp, day_of_week):
-    """
-    Adjusts the passed datetime to reflect the desired day of week. The
-    calibration chooses the requested day of week that is present in the
-    **week of the original datetime timestamp**. In the case of a Monday
-    timestamp being passed with a 'sunday' day of week argument,
-    that means that the returned, calibrated Sunday updated onto the
-    timestamp will not be the immediately previous day but instead the
-    end of the week.
-
-    Args:
-        timestamp: A Python ``datetime`` reflecting when a ridership data point occured.
-        day_of_week (str): 'weekday', 'saturday', or 'sunday' expected.  A Monday is
-            used as the substitute for 'weekday'.
-
-    Returns:
-        The Python datetime timestamp with date that conforms to required day of week in
-        CMTA's Central Time ('America/Chicago'). The returned timestamp for storage is in
-        UTC timezone. Client applications must localize the UTC back into Central.
-    """
-    target_day = 1
-    if day_of_week == 'saturday':
-        target_day = 6
-    elif day_of_week == 'sunday':
-        target_day = 7
-    # immediately return if already at that day
-    current_day = timestamp.isoweekday()
-    if current_day == target_day:
-        return timestamp
-    difference = target_day - current_day
-    timestamp = timestamp + datetime.timedelta(days=difference)
-    return timestamp.astimezone(pytz.utc)
 
 
 def get_latest_measurement_timestamp(session):
@@ -145,41 +111,6 @@ def get_high_ridership_routes(session, timestamp, size=10):
     return [top.route.route_number for top in top_riderships]
 
 
-def get_period_timestamp(day_of_week, season, calendar_year):
-    """
-    Selects a Python datetime timestamp to represent a 'season' as
-    a specific day of the year. The function selects the first day of
-    week matched the passed argument in the first month of the season
-    matching the passed in season.
-
-    For 'winter', the selected month is January. For 'spring', the selected
-    month is April. For 'summer', the selected month is July. For fall,
-    the selected month is October. While not perfectly matching the actual
-    seasons, it matches a quarterly schedule that is intuitive.
-
-    Args:
-        day_of_week (str): 'weekday', 'saturday', and 'sunday' are expected.
-        season (str): 'winter', 'spring', 'summer', 'fall' are expected.
-        calendar_year (int): The calendar year.
-
-    Returns:
-        A Python datetime object that represents that 'season'. It's timezone is UTC.
-    """
-    month = 1
-    if season == 'spring':
-        month = 4
-    elif season == 'summer':
-        month = 7
-    elif season == 'fall':
-        month = 10
-    # timezone aware timestamp for a central 'America/Chicago' timezone
-    timestamp = APP_TIMEZONE.localize(datetime.datetime(year=calendar_year,
-                                                        month=month,
-                                                        day=1))
-    # returns a UTC (not 'America/Chicago') timezone as it will be persisted
-    return calibrate_day_of_week(timestamp, day_of_week.lower())
-
-
 def find_period(worksheet, periods, column_index, minimum_search=10):
     """
     Searches for a performance period in a column and places
@@ -201,7 +132,7 @@ def find_period(worksheet, periods, column_index, minimum_search=10):
             day_of_week = extract_day_of_week(row_index, column_index, worksheet)
             if season and year and day_of_week:
                 # The timestamp is in UTC timezone
-                period_timestamp = get_period_timestamp(day_of_week, season.lower(), int(year))
+                period_timestamp = utils.get_period_timestamp(day_of_week, season.lower(), int(year))
                 periods[str(column_index)] = {
                     'column': column_index,
                     'season': season.lower(),
@@ -642,7 +573,7 @@ def to_service_facts(ridership_facts):
     service_facts = dict()
     for fact in ridership_facts:
         # we use the 'weekday' timestamp for the aggregated data
-        measurement_timestamp = get_period_timestamp('weekday', fact.season, fact.calendar_year).isoformat()
+        measurement_timestamp = utils.get_period_timestamp('weekday', fact.season, fact.calendar_year).isoformat()
         if fact.service_type.upper() in service_facts:
             season_facts = service_facts[fact.service_type.upper()]
             if measurement_timestamp in season_facts:

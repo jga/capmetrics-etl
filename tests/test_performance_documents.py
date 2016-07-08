@@ -123,6 +123,247 @@ class TransformRidershipCollectionTests(unittest.TestCase):
         self.assertEqual(resource_identifier['type'], 'daily-riderships')
 
 
+class UpdateRouteSparklinesTests(unittest.TestCase):
+
+    def setUp(self):
+        self.engine = create_engine('sqlite:///:memory:')
+        Session = sessionmaker()
+        Session.configure(bind=self.engine)
+        session = Session()
+        models.Base.metadata.create_all(self.engine)
+        self.session = session
+        route1 = models.Route(id=1, route_number=1,
+                              route_name='SERVICIO UNO',
+                              service_type='LOCAL')
+        route2 = models.Route(id=2, route_number=2,
+                              route_name='SERVICIO DOS',
+                              service_type='LOCAL')
+        route3 = models.Route(id=3, route_number=3,
+                              route_name='SERVICIO TRES',
+                              service_type='LOCAL')
+        session.add_all([route1, route2, route3])
+
+        # spring season for route 1
+        daily_ridership_r1_spring_1 = models.DailyRidership(created_on=datetime.now(tz=UTC_TIMEZONE),
+                                                            is_current=True,
+                                                            day_of_week='weekday',
+                                                            season='spring',
+                                                            calendar_year=2010,
+                                                            measurement_timestamp=datetime(2010, 4, 1,
+                                                                                           tzinfo=UTC_TIMEZONE),
+                                                            ridership=7000,
+                                                            route_id=1)
+        daily_ridership_r1_spring_2 = models.DailyRidership(created_on=datetime.now(tz=UTC_TIMEZONE),
+                                                            is_current=True,
+                                                            day_of_week='saturday',
+                                                            season='spring',
+                                                            calendar_year=2010,
+                                                            measurement_timestamp=datetime(2010, 4, 1,
+                                                                                           tzinfo=UTC_TIMEZONE),
+                                                            ridership=1100,
+                                                            route_id=1)
+        # summer season for route 1
+        daily_ridership_r1_summer_1 = models.DailyRidership(created_on=datetime.now(tz=UTC_TIMEZONE),
+                                                            is_current=True,
+                                                            day_of_week='weekday',
+                                                            season='summer',
+                                                            calendar_year=2010,
+                                                            measurement_timestamp=datetime(2010, 7, 1,
+                                                                                           tzinfo=UTC_TIMEZONE),
+                                                            ridership=8000,
+                                                            route_id=1)
+        daily_ridership_r1_summer_2 = models.DailyRidership(created_on=datetime.now(tz=UTC_TIMEZONE),
+                                                            is_current=True,
+                                                            day_of_week='saturday',
+                                                            season='summer',
+                                                            calendar_year=2010,
+                                                            measurement_timestamp=datetime(2010, 7, 1,
+                                                                                           tzinfo=UTC_TIMEZONE),
+                                                            ridership=1200,
+                                                            route_id=1)
+        # fall season for route 1
+        daily_ridership_r1_fall_1 = models.DailyRidership(created_on=datetime.now(tz=UTC_TIMEZONE),
+                                                            is_current=True,
+                                                            day_of_week='weekday',
+                                                            season='fall',
+                                                            calendar_year=2010,
+                                                            measurement_timestamp=datetime(2010, 10, 1,
+                                                                                           tzinfo=UTC_TIMEZONE),
+                                                            ridership=8500,
+                                                            route_id=1)
+        daily_ridership_r1_fall_2 = models.DailyRidership(created_on=datetime.now(tz=UTC_TIMEZONE),
+                                                            is_current=True,
+                                                            day_of_week='saturday',
+                                                            season='fall',
+                                                            calendar_year=2010,
+                                                            measurement_timestamp=datetime(2010, 10, 1,
+                                                                                           tzinfo=UTC_TIMEZONE),
+                                                            ridership=1300,
+                                                            route_id=1)
+
+
+        # spring season for route 2
+        daily_ridership_r2_spring_1 = models.DailyRidership(created_on=datetime.now(tz=UTC_TIMEZONE),
+                                                            is_current=True,
+                                                            day_of_week='weekday',
+                                                            season='spring',
+                                                            calendar_year=2010,
+                                                            measurement_timestamp=datetime(2010, 4, 1,
+                                                                                           tzinfo=UTC_TIMEZONE),
+                                                            ridership=1726,
+                                                            route_id=2)
+        daily_ridership_r2_spring_2 = models.DailyRidership(created_on=datetime.now(tz=UTC_TIMEZONE),
+                                                            is_current=True,
+                                                            day_of_week='saturday',
+                                                            season='spring',
+                                                            calendar_year=2010,
+                                                            measurement_timestamp=datetime(2010, 4, 1,
+                                                                                           tzinfo=UTC_TIMEZONE),
+                                                            ridership=1100,
+                                                            route_id=2)
+        # summer season for route 2
+        daily_ridership_r2_summer_1 = models.DailyRidership(created_on=datetime.now(tz=UTC_TIMEZONE),
+                                                            is_current=True,
+                                                            day_of_week='weekday',
+                                                            season='summer',
+                                                            calendar_year=2010,
+                                                            measurement_timestamp=datetime(2010, 7, 1,
+                                                                                           tzinfo=UTC_TIMEZONE),
+                                                            ridership=8000,
+                                                            route_id=2)
+        daily_ridership_r2_summer_2 = models.DailyRidership(created_on=datetime.now(tz=UTC_TIMEZONE),
+                                                            is_current=True,
+                                                            day_of_week='saturday',
+                                                            season='summer',
+                                                            calendar_year=2010,
+                                                            measurement_timestamp=datetime(2010, 7, 1,
+                                                                                           tzinfo=UTC_TIMEZONE),
+                                                            ridership=1200,
+                                                            route_id=2)
+        # fall season for route 2
+        daily_ridership_r2_fall_1 = models.DailyRidership(created_on=datetime.now(tz=UTC_TIMEZONE),
+                                                          is_current=True,
+                                                          day_of_week='weekday',
+                                                          season='fall',
+                                                          calendar_year=2010,
+                                                          measurement_timestamp=datetime(2010, 10, 1,
+                                                                                         tzinfo=UTC_TIMEZONE),
+                                                          ridership=500,
+                                                          route_id=2)
+        daily_ridership_r2_fall_2 = models.DailyRidership(created_on=datetime.now(tz=UTC_TIMEZONE),
+                                                          is_current=True,
+                                                          day_of_week='saturday',
+                                                          season='fall',
+                                                          calendar_year=2010,
+                                                          measurement_timestamp=datetime(2010, 10, 1,
+                                                                                         tzinfo=UTC_TIMEZONE),
+                                                          ridership=300,
+                                                          route_id=2)
+        # spring season for route 3
+        daily_ridership_r3_spring_1 = models.DailyRidership(created_on=datetime.now(tz=UTC_TIMEZONE),
+                                                            is_current=True,
+                                                            day_of_week='weekday',
+                                                            season='spring',
+                                                            calendar_year=2010,
+                                                            measurement_timestamp=datetime(2010, 4, 1,
+                                                                                           tzinfo=UTC_TIMEZONE),
+                                                            ridership=5550,
+                                                            route_id=3)
+        daily_ridership_r3_spring_2 = models.DailyRidership(created_on=datetime.now(tz=UTC_TIMEZONE),
+                                                            is_current=True,
+                                                            day_of_week='saturday',
+                                                            season='spring',
+                                                            calendar_year=2010,
+                                                            measurement_timestamp=datetime(2010, 4, 1,
+                                                                                           tzinfo=UTC_TIMEZONE),
+                                                            ridership=1100,
+                                                            route_id=3)
+        # summer season for route 3
+        daily_ridership_r3_summer_1 = models.DailyRidership(created_on=datetime.now(tz=UTC_TIMEZONE),
+                                                            is_current=True,
+                                                            day_of_week='weekday',
+                                                            season='summer',
+                                                            calendar_year=2010,
+                                                            measurement_timestamp=datetime(2010, 7, 1,
+                                                                                           tzinfo=UTC_TIMEZONE),
+                                                            ridership=8000,
+                                                            route_id=3)
+        daily_ridership_r3_summer_2 = models.DailyRidership(created_on=datetime.now(tz=UTC_TIMEZONE),
+                                                            is_current=True,
+                                                            day_of_week='saturday',
+                                                            season='summer',
+                                                            calendar_year=2010,
+                                                            measurement_timestamp=datetime(2010, 7, 1,
+                                                                                           tzinfo=UTC_TIMEZONE),
+                                                            ridership=1200,
+                                                            route_id=3)
+        # fall season for route 3
+        daily_ridership_r3_fall_1 = models.DailyRidership(created_on=datetime.now(tz=UTC_TIMEZONE),
+                                                          is_current=True,
+                                                          day_of_week='weekday',
+                                                          season='fall',
+                                                          calendar_year=2010,
+                                                          measurement_timestamp=datetime(2010, 10, 1,
+                                                                                         tzinfo=UTC_TIMEZONE),
+                                                          ridership=9300,
+                                                          route_id=3)
+        daily_ridership_r3_fall_2 = models.DailyRidership(created_on=datetime.now(tz=UTC_TIMEZONE),
+                                                          is_current=True,
+                                                          day_of_week='saturday',
+                                                          season='fall',
+                                                          calendar_year=2010,
+                                                          measurement_timestamp=datetime(2010, 10, 1,
+                                                                                         tzinfo=UTC_TIMEZONE),
+                                                          ridership=3330,
+                                                          route_id=3)
+        session.add_all([
+            daily_ridership_r1_fall_1, daily_ridership_r3_fall_2,
+            daily_ridership_r2_fall_1, daily_ridership_r2_summer_2,
+            daily_ridership_r1_spring_1, daily_ridership_r3_summer_2,
+            daily_ridership_r3_fall_1, daily_ridership_r1_fall_2,
+            daily_ridership_r1_spring_2, daily_ridership_r1_summer_1,
+            daily_ridership_r1_summer_2, daily_ridership_r3_summer_1,
+            daily_ridership_r3_spring_1, daily_ridership_r3_spring_2,
+            daily_ridership_r2_fall_2, daily_ridership_r2_spring_1,
+            daily_ridership_r2_spring_2, daily_ridership_r2_summer_1
+        ])
+        session.commit()
+        perfdocs.update_route_sparklines(self.session)
+        self.pd = self.session.query(models.PerformanceDocument) \
+            .filter_by(name='ridership-sparklines').one()
+        self.document = json.loads(self.pd.document)
+
+    def tearDown(self):
+        models.Base.metadata.drop_all(self.engine)
+
+    def test_dates_sorted(self):
+        top_ridership = self.document[0]
+        weekly_ridership = top_ridership['data']
+        bottom_ridership = self.document[2]
+        weekly_ridership2 = bottom_ridership['data']
+        self.assertEqual(weekly_ridership[0]['date'], '2010-03-29T05:00:00Z')
+        self.assertEqual(weekly_ridership[1]['date'], '2010-06-28T05:00:00Z')
+        self.assertEqual(weekly_ridership[2]['date'], '2010-09-27T05:00:00Z')
+        self.assertEqual(weekly_ridership2[0]['date'], '2010-03-29T05:00:00Z')
+        self.assertEqual(weekly_ridership2[1]['date'], '2010-06-28T05:00:00Z')
+        self.assertEqual(weekly_ridership2[2]['date'], '2010-09-27T05:00:00Z')
+
+    def test_latest_value_sort(self):
+        # highest ridership latest value is route 3, then 1, then 2
+        top_ridership = self.document[0]
+        bottom_ridership = self.document[2]
+        self.assertEqual(top_ridership['routeName'], 'SERVICIO TRES')
+        self.assertEqual(bottom_ridership['routeName'], 'SERVICIO DOS')
+
+    def test_weekly_aggregation_calculation(self):
+        top_ridership = self.document[0]
+        bottom_ridership = self.document[2]
+        self.assertEqual(top_ridership['data'][2]['ridership'], 49830, msg=json.dumps(self.document))
+        self.assertEqual(top_ridership['data'][0]['ridership'], 28850)
+        self.assertEqual(bottom_ridership['data'][2]['ridership'], 2800)
+        self.assertEqual(bottom_ridership['data'][0]['ridership'], 9730)
+
+
 class UpdateSystemTrendsDocumentTests(unittest.TestCase):
 
     def setUp(self):

@@ -4,9 +4,33 @@ import json
 from sqlalchemy.orm.exc import NoResultFound
 import pytz
 from . import models
+from . import utils
 
-TIMEZONE_NAME = 'America/Chicago'
-APP_TIMEZONE = pytz.timezone(TIMEZONE_NAME)
+
+class RouteCompendiumEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, models.DailyRidership):
+            return {
+                'id': str(obj.id),
+                'createdOn': obj.created_on.isoformat(),
+                'isCurrent': obj.is_current,
+                'dayOfWeek': obj.day_of_week,
+                'season': obj.season,
+                'calendarYear': obj.calendar_year,
+                'ridership': int(obj.ridership),
+                'routeId': obj.route_id,
+                'measurementTimestamp': obj.measurement_timestamp.isoformat()
+            }
+        return json.JSONEncoder.default(self, obj)
+
+
+class SparklineCompendiumEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime.datetime):
+            no_offset = obj.isoformat().replace('+00:00', '')
+            zulu_marked = '{0}Z'.format(no_offset)
+            return zulu_marked
+        return json.JSONEncoder.default(self, obj)
 
 
 def transform_ridership_collection(riderships, type_name, route_id, included):
@@ -129,26 +153,67 @@ def update_system_trends_document(session):
     session.commit()
 
 
-class RouteCompendiumEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, models.DailyRidership):
-            return {
-                'id': str(obj.id),
-                'createdOn': obj.created_on.isoformat(),
-                'isCurrent': obj.is_current,
-                'dayOfWeek': obj.day_of_week,
-                'season': obj.season,
-                'calendarYear': obj.calendar_year,
-                'ridership': int(obj.ridership),
-                'routeId': obj.route_id,
-                'measurementTimestamp': obj.measurement_timestamp.isoformat()
-            }
-        return json.JSONEncoder.default(self, obj)
-
-
 def sort_compendium_riderships(compendiums):
     for compendium in compendiums:
         compendium['riderships'].sort(key=lambda r: r.measurement_timestamp)
+
+
+def get_weekly_ridership(day_of_week, value):
+    if day_of_week.lower() == 'weekday':
+        return int(5 * value)
+    return int(value)
+
+
+def update_route_sparklines(session):
+    routes = session.query(models.Route).all()
+    primary_data = []
+    for route in routes:
+        aggregator = {}
+        active_ridership = session.query(models.DailyRidership).filter_by(route_id=route.id, is_current=True)
+        for ridership in active_ridership:
+            # UTC timezone datetime
+            period_timestamp = utils.get_period_timestamp('weekday', ridership.season, ridership.calendar_year)
+            pt_iso = period_timestamp.isoformat()
+            if pt_iso in aggregator:
+                new_count = get_weekly_ridership(ridership.day_of_week, ridership.ridership)
+                old_count = aggregator[pt_iso]['ridership_count']
+                aggregator[pt_iso]['ridership_count'] = old_count + new_count
+            else:
+                ridership_count = get_weekly_ridership(ridership.day_of_week, ridership.ridership)
+                aggregator[pt_iso] = {
+                    'ridership_count': ridership_count,
+                    'pt': period_timestamp
+                }
+        for pt_iso, value in aggregator.items():
+            spark_point = {'date': value['pt'], 'ridership': value['ridership_count']}
+            compendium = next((c for c in primary_data if c['routeNumber'] == str(route.route_number)), None)
+            if compendium:
+                compendium['data'].append(spark_point)
+            else:
+                selector = 'ridership-sparkline-{0}'.format(str(route.route_number))
+                compendium = {
+                    'routeNumber': str(route.route_number),
+                    'routeName': route.route_name,
+                    'selector': selector,
+                    'data': [spark_point]
+                }
+                primary_data.append(compendium)
+    for compendium in primary_data:
+        compendium['data'].sort(key=lambda r: r['date'])
+    primary_data.sort(key=lambda c: c['data'][-1]['ridership'], reverse=True)
+    document = json.dumps(primary_data, cls=SparklineCompendiumEncoder)
+    update_timestamp = datetime.datetime.now(tz=pytz.utc)
+    try:
+        sparklines_doc = session.query(models.PerformanceDocument) \
+                                .filter_by(name='ridership-sparklines').one()
+        sparklines_doc.document = document
+        sparklines_doc.updated_on = update_timestamp
+    except NoResultFound:
+        sparklines_doc = models.PerformanceDocument(name='ridership-sparklines',
+                                                    document=document,
+                                                    updated_on=update_timestamp)
+        session.add(sparklines_doc)
+    session.commit()
 
 
 def update_top_routes(session):
@@ -191,3 +256,4 @@ def update(session):
     update_system_trends_document(session)
     update_route_documents(session)
     update_top_routes(session)
+    update_route_sparklines(session)

@@ -66,10 +66,12 @@ def transform_ridership_collection(riderships, type_name, route_id, included):
     return resource_identifiers
 
 
-def build_route_document(route):
+def build_route_document(session, route):
     included = []
-    daily_riderships = route.daily_ridership
-    service_hour_riderships = route.service_hour_ridership
+    daily_riderships = session.query(models.DailyRidership).filter_by(route_id=route.id, is_current=True)
+    service_hour_riderships = session.query(models.ServiceHourRidership)\
+                                                  .filter_by(route_id=route.id,
+                                                             is_current=True)
     daily_ridership_identifiers = transform_ridership_collection(daily_riderships,
                                                                  'daily-riderships',
                                                                  route.id,
@@ -123,7 +125,7 @@ def update_route_documents(session):
     for route in routes:
         name = 'route-{0}'.format(route.route_number)
         update_timestamp = datetime.datetime.now(tz=pytz.utc)
-        document = build_route_document(route)
+        document = build_route_document(session, route)
         try:
             performance_document = session.query(models.PerformanceDocument)\
                                       .filter_by(name=name).one()

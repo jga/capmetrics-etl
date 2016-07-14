@@ -22,6 +22,7 @@ Table of Contents
    etl
    quality
    models
+   performance_documents
 
 Indices and tables
 ------------------

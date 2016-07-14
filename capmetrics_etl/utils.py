@@ -30,12 +30,10 @@ def calibrate_day_of_week(timestamp, day_of_week):
         target_day = 6
     elif day_of_week == 'sunday':
         target_day = 7
-    # immediately return if already at that day
     current_day = timestamp.isoweekday()
-    if current_day == target_day:
-        return timestamp.astimezone(pytz.utc)
     difference = target_day - current_day
-    timestamp = timestamp + datetime.timedelta(days=difference)
+    if difference != 0:
+        timestamp = timestamp + datetime.timedelta(days=difference)
     return timestamp.astimezone(pytz.utc)
 
 

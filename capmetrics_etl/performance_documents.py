@@ -1,6 +1,7 @@
 from collections import OrderedDict
 import datetime
 import json
+from sqlalchemy import asc, desc
 from sqlalchemy.orm.exc import NoResultFound
 import pytz
 from . import models
@@ -166,7 +167,62 @@ def get_weekly_ridership(day_of_week, value):
     return int(value)
 
 
+def update_productivity_document(session):
+    productivity = OrderedDict()
+    weeklies = session.query(models.WeeklyPerformance)\
+                      .order_by(desc(models.WeeklyPerformance.measurement_timestamp))\
+                      .order_by(asc(models.WeeklyPerformance.productivity))
+    for w in weeklies:
+        ts = w.measurement_timestamp.isoformat()
+        route_performance = {
+            'routeNumber': w.route.route_number,
+            'ridership': w.ridership,
+            'productivity': w.productivity
+        }
+        if ts in productivity:
+            productivity[ts].append(route_performance)
+        else:
+            productivity[ts] = [route_performance]
+    productivity_series = list()
+    for timestamp, route_performances in productivity.items():
+        productivity_series.append({'date': timestamp, 'performance': route_performances})
+
+    document = json.dumps(productivity_series)
+    update_timestamp = datetime.datetime.now(tz=pytz.utc)
+    try:
+        performance_doc = session.query(models.PerformanceDocument) \
+            .filter_by(name='productivity').one()
+        performance_doc.document = document
+        performance_doc.updated_on = update_timestamp
+    except NoResultFound:
+        performance_doc = models.PerformanceDocument(name='productivity',
+                                                     document=document,
+                                                     updated_on=update_timestamp)
+        session.add(performance_doc)
+    session.commit()
+
+
 def update_route_sparklines(session):
+    """
+
+    Updates the JSON document with spark line data.
+
+    The spark line JSON document is an array of route compendium dictionaries.
+
+    =============  =================================
+    Key            Value
+    =============  =================================
+    routeNumber    String with route's number
+    roteName       String with route's name
+    selector       String with a CSS selector
+    data           List of spark point dictionaries
+    =============  =================================
+
+    Each *spark point* dictionary maps a ``ridership`` count and ``date`` period timestamp.
+
+    Args:
+        session: An SQLAlchemy session.
+    """
     routes = session.query(models.Route).all()
     primary_data = []
     for route in routes:
@@ -253,9 +309,9 @@ def update_top_routes(session):
         session.add(top_routes_doc)
     session.commit()
 
-
 def update(session):
     update_system_trends_document(session)
     update_route_documents(session)
     update_top_routes(session)
     update_route_sparklines(session)
+    update_productivity_document(session)

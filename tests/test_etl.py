@@ -1046,7 +1046,6 @@ class UpdateSystemTrendsTests(unittest.TestCase):
 class UpdateHighRidershipRoutes(unittest.TestCase):
 
     def setUp(self):
-        tests_path = os.path.dirname(__file__)
         self.engine = create_engine('sqlite:///:memory:')
         Session = sessionmaker()
         Session.configure(bind=self.engine)
@@ -1113,3 +1112,83 @@ class UpdateHighRidershipRoutes(unittest.TestCase):
         returned_routes = set([route.route_number for route in high_ridership_routes])
         expected_routes = {1, 5, 23, 24, 25, 26, 27, 28, 29, 30}
         self.assertEqual(returned_routes, expected_routes)
+
+
+class UpdateWeeklyPerformanceTests(unittest.TestCase):
+
+    def setUp(self):
+        self.engine = create_engine('sqlite:///:memory:')
+        Session = sessionmaker()
+        Session.configure(bind=self.engine)
+        self.session = Session()
+        models.Base.metadata.create_all(self.engine)
+        # creating 3 routes, 9 daily and 9 service hour models per route
+        for number in range(1, 4):
+            route = models.Route(id=number,
+                                 route_number=number,
+                                 route_name='TEST ROUTE {0}'.format(number),
+                                 service_type='LOCAL')
+            self.session.add(route)
+            self.session.commit()
+            year = 2010
+            for day in ['weekday', 'sunday', 'saturday']:
+                for season in ['summer', 'spring', 'winter']:
+                    ridership = int(1000 / number) + (10 * number)
+                    productivity = (10 * number) - (number + 3)
+                    timestamp = utils.get_period_timestamp(day, season, year)
+                    daily = models.DailyRidership(created_on=datetime.utcnow(),
+                                                  is_current=True,
+                                                  day_of_week=day,
+                                                  season=season,
+                                                  calendar_year=year,
+                                                  ridership=ridership,
+                                                  route_id=route.id,
+                                                  measurement_timestamp=timestamp)
+                    productivity = models.ServiceHourRidership(created_on=datetime.utcnow(),
+                                                               is_current=True,
+                                                               day_of_week=day,
+                                                               season=season,
+                                                               calendar_year=year,
+                                                               ridership=productivity,
+                                                               route_id=route.id,
+                                                               measurement_timestamp=timestamp)
+                    self.session.add(daily)
+                    self.session.add(productivity)
+        self.session.commit()
+        etl.update_weekly_performance(self.session)
+
+    def tearDown(self):
+        models.Base.metadata.drop_all(self.engine)
+
+    def test_persist(self):
+        dailies = self.session.query(models.DailyRidership).all()
+        hourlies = self.session.query(models.ServiceHourRidership).all()
+        self.assertEqual(len(dailies), 27)
+        self.assertEqual(len(hourlies), 27)
+        self.assertEqual(self.session.query(models.WeeklyPerformance).count(), 9)
+
+    def test_performance_calculations(self):
+        # 5050 + 1010 + 1010
+        wp1 = self.session.query(models.WeeklyPerformance).filter_by(route_id=1, season='spring').one()
+        self.assertEqual(wp1.ridership, 7070)
+        # 2600 + 520 + 520
+        wp2 = self.session.query(models.WeeklyPerformance).filter_by(route_id=2, season='summer').one()
+        self.assertEqual(wp2.ridership, 3640)
+        # 1815 + 363 + 363
+        wp3 = self.session.query(models.WeeklyPerformance).filter_by(route_id=3, season='winter').one()
+        self.assertEqual(wp3.ridership, 2541)
+        self.assertEqual(wp1.productivity, 6)
+        self.assertEqual(wp2.productivity, 15)
+        self.assertEqual(wp3.productivity, 24)
+
+    def test_seasons(self):
+        springs = self.session.query(models.WeeklyPerformance).filter_by(route_id=1, season='spring')
+        for s in springs:
+            self.assertEqual(s.measurement_timestamp.isoformat(), '2010-03-29T05:00:00')
+        summers = self.session.query(models.WeeklyPerformance).filter_by(route_id=2, season='summer')
+        for m in summers:
+            self.assertEqual(m.measurement_timestamp.isoformat(), '2010-06-28T05:00:00')
+        winters = self.session.query(models.WeeklyPerformance).filter_by(route_id=3, season='winter')
+        for w in winters:
+            self.assertEqual(w.measurement_timestamp.isoformat(), '2009-12-28T06:00:00')
+

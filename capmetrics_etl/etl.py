@@ -70,8 +70,6 @@ def get_season_and_year(period):
     return None, None
 
 
-
-
 def get_latest_measurement_timestamp(session):
     """
     Queries :class:`~.models.DailyRidership` models to find the
@@ -104,10 +102,10 @@ def get_high_ridership_routes(session, timestamp, size=10):
         list
     """
     top_riderships = session.query(models.DailyRidership)\
-           .filter_by(day_of_week='weekday',
-                      measurement_timestamp=timestamp,
-                      is_current=True)\
-           .order_by(desc(models.DailyRidership.ridership))[0:size]
+                            .filter_by(day_of_week='weekday',
+                                       measurement_timestamp=timestamp,
+                                       is_current=True)\
+                            .order_by(desc(models.DailyRidership.ridership))[0:size]
     return [top.route.route_number for top in top_riderships]
 
 
@@ -457,6 +455,19 @@ def deactivate_previous_system_ridership_facts(session):
         fact.is_active = False
     session.commit()
 
+def deactivate_previous_weekly_performance(session):
+    """
+
+    Selects all persisted ``WeeklyRidership`` models that are currently
+    active and commits their ``is_current`` property to ``False``.
+
+    Args:
+        session: SQLAlchemy session.
+    """
+    facts = session.query(models.WeeklyPerformance).filter_by(is_current=True).all()
+    for fact in facts:
+        fact.is_current = False
+    session.commit()
 
 def add_ridership_fact(system_facts, fact):
     """
@@ -649,6 +660,90 @@ def update_high_ridership_routes(session, size=10):
     session.commit()
 
 
+def update_perfdocs(session):
+    print('Updating performance documents...')
+    perfdocs.update(session)
+
+
+def update_weekly_performance(session):
+    # aggregator structure
+    #
+    # {timestamp: {
+    #       route-id-label: {
+    #         'ridership': integer,
+    #         'productivity': integer,
+    #         'season': string,
+    #         'year': integer
+    #       },
+    #       route-id-label: {
+    #         'ridership': integer,
+    #         'productivity': integer,
+    #         'season': string,
+    #         'year': integer
+    #       }
+    #   }
+    # }
+    aggregator = {}
+    deactivate_previous_weekly_performance(session)
+    routes = session.query(models.Route).all()
+    for route in routes:
+        route_label = str(route.id)
+        dailies = session.query(models.DailyRidership)\
+                         .filter_by(route_id=route.id, is_current=True)
+        for d in dailies:
+            count = d.ridership * 5 if d.day_of_week == 'weekday' else d.ridership
+            period_ts = utils.get_period_timestamp('weekday', d.season, d.calendar_year).isoformat()
+            if period_ts in aggregator:
+                period_performance = aggregator[period_ts]
+                if route_label in period_performance:
+                    route_performance = period_performance[route_label]
+                    route_performance['ridership'] += int(count)
+                else:
+                    period_performance[route_label] = {
+                        'ridership': int(count),
+                        'productivity': None,
+                        'season': d.season,
+                        'year': d.calendar_year
+                    }
+            else:
+                period_performance = dict()
+                period_performance[route_label] = {
+                    'ridership': int(count),
+                    'productivity': None,
+                    'season': d.season,
+                    'year': d.calendar_year
+                }
+                aggregator[period_ts] = period_performance
+
+        # with daily riderships done, we now get weekday productivity
+        productivities = session.query(models.ServiceHourRidership)\
+                                .filter_by(route_id=route.id, is_current=True, day_of_week='weekday')
+        for p in productivities:
+            period_ts = utils.get_period_timestamp('weekday', p.season, p.calendar_year).isoformat()
+            if period_ts in aggregator:
+                period_performance = aggregator[period_ts]
+                if route_label in period_performance:
+                    route_performance = period_performance[route_label]
+                    route_performance['productivity'] = int(p.ridership)
+    # with aggregator complete, we now save weekly performance models
+    for timestamp, period_performance in aggregator.items():
+        for route_label, route_performance in period_performance.items():
+            created_on = datetime.datetime.now(tz=pytz.utc)
+            measurement_timestamp = utils.get_period_timestamp('weekday',
+                                                               route_performance['season'],
+                                                               route_performance['year'])
+            weekly = models.WeeklyPerformance(created_on=created_on,
+                                              calendar_year=route_performance['year'],
+                                              is_current=True,
+                                              measurement_timestamp=measurement_timestamp,
+                                              productivity=route_performance['productivity'],
+                                              ridership=route_performance['ridership'],
+                                              route_id=int(route_label),
+                                              season=route_performance['season'])
+            session.add(weekly)
+    session.commit()
+
+
 def run_excel_etl(data_source_file, session, configuration):
     """
     Consumes an Excel file with CapMetro data and updates database tables
@@ -689,7 +784,8 @@ def run_excel_etl(data_source_file, session, configuration):
     update_system_trends(session)
     print('Updating high ridership routes...')
     update_high_ridership_routes(session)
-    print('Updating performance documents...')
-    perfdocs.update(session)
+    print('Updating weekly performance...')
+    update_weekly_performance(session)
+    update_perfdocs(session)
     session.close()
 

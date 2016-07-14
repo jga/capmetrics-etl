@@ -41,6 +41,23 @@ class DailyRidership(Base):
     measurement_timestamp = Column(DateTime(timezone=True))
 
 
+class WeeklyPerformance(Base):
+    """
+    Estimated weekly ridership and productivity for a season.
+    """
+    __tablename__ = 'weekly_performance'
+    id = Column(Integer, primary_key=True)
+    calendar_year = Column(Integer)
+    created_on = Column(DateTime(timezone=True))
+    is_current = Column(Boolean)
+    measurement_timestamp = Column(DateTime(timezone=True))
+    productivity = Column(Float)
+    ridership = Column(Float)
+    route_id = Column(Integer, ForeignKey('route.id'), index=True)
+    route = relationship("Route", backref='weekly_performances')
+    season = Column(String)
+
+
 class ServiceHourRidership(Base):
     """
     Estimated service hour productivity for a type of day (weekday, Saturday, Sunday)
@@ -48,15 +65,15 @@ class ServiceHourRidership(Base):
     """
     __tablename__ = 'service_hour_ridership'
     id = Column(Integer, primary_key=True)
-    created_on = Column(DateTime(timezone=True))
-    is_current = Column(Boolean)
-    day_of_week = Column(String)
-    season = Column(String)
     calendar_year = Column(Integer)
+    created_on = Column(DateTime(timezone=True))
+    day_of_week = Column(String)
+    is_current = Column(Boolean)
+    measurement_timestamp = Column(DateTime(timezone=True))
     ridership = Column(Float)
     route_id = Column(Integer, ForeignKey('route.id'), index=True)
     route = relationship("Route", backref='service_hour_ridership')
-    measurement_timestamp = Column(DateTime(timezone=True))
+    season = Column(String)
 
 
 class SystemRidership(Base):

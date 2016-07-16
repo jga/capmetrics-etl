@@ -281,6 +281,7 @@ class GetHighRidershipRoutesTests(unittest.TestCase):
         self.session.add(hourly_ridership_report)
         self.session.commit()
         self.session.close()
+        etl.update_weekly_performance(self.session)
         latest = etl.get_latest_measurement_timestamp(self.session)
         routes = etl.get_high_ridership_routes(self.session, latest)
         expected_routes = {7, 1, 300, 801, 10, 3, 20, 803, 331, 37}
@@ -1043,7 +1044,7 @@ class UpdateSystemTrendsTests(unittest.TestCase):
         self.assertEqual(rail_trend.trend, expected_rail_json, msg=rail_trend.trend)
 
 
-class UpdateHighRidershipRoutes(unittest.TestCase):
+class UpdateHighRidershipRoutesTests(unittest.TestCase):
 
     def setUp(self):
         self.engine = create_engine('sqlite:///:memory:')
@@ -1051,7 +1052,7 @@ class UpdateHighRidershipRoutes(unittest.TestCase):
         Session.configure(bind=self.engine)
         self.session = Session()
         models.Base.metadata.create_all(self.engine)
-        # creating 10 routes and daily ridership models
+        # creating 31 routes with 1 daily ridership model
         for number in range(1, 31):
             route = models.Route(id=number,
                                  route_number=number,
@@ -1071,6 +1072,7 @@ class UpdateHighRidershipRoutes(unittest.TestCase):
                                                     measurement_timestamp=timestamp)
             self.session.add(daily_ridership)
         self.session.commit()
+        etl.update_weekly_performance(self.session)
         etl.update_high_ridership_routes(self.session, 10)
 
     def tearDown(self):
@@ -1089,6 +1091,7 @@ class UpdateHighRidershipRoutes(unittest.TestCase):
         route_1 = self.session.query(models.DailyRidership).filter_by(route_id=1).one()
         route_1.ridership = 5000
         self.session.commit()
+        etl.update_weekly_performance(self.session)
         etl.update_high_ridership_routes(self.session, 10)
         high_ridership_routes = self.session.query(models.Route) \
             .filter_by(is_high_ridership=True) \
@@ -1104,6 +1107,7 @@ class UpdateHighRidershipRoutes(unittest.TestCase):
         route_1.ridership = 10000
         route_5.ridership = 5000
         self.session.commit()
+        etl.update_weekly_performance(self.session)
         etl.update_high_ridership_routes(self.session, 10)
         high_ridership_routes = self.session.query(models.Route) \
             .filter_by(is_high_ridership=True) \

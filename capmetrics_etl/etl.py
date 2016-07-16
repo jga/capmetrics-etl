@@ -101,11 +101,10 @@ def get_high_ridership_routes(session, timestamp, size=10):
     Returns:
         list
     """
-    top_riderships = session.query(models.DailyRidership)\
-                            .filter_by(day_of_week='weekday',
-                                       measurement_timestamp=timestamp,
+    top_riderships = session.query(models.WeeklyPerformance)\
+                            .filter_by(measurement_timestamp=timestamp,
                                        is_current=True)\
-                            .order_by(desc(models.DailyRidership.ridership))[0:size]
+                            .order_by(desc(models.WeeklyPerformance.ridership))[0:size]
     return [top.route.route_number for top in top_riderships]
 
 
@@ -782,10 +781,10 @@ def run_excel_etl(data_source_file, session, configuration):
     update_system_ridership(session)
     print('Updating system trends...')
     update_system_trends(session)
-    print('Updating high ridership routes...')
-    update_high_ridership_routes(session)
     print('Updating weekly performance...')
     update_weekly_performance(session)
+    print('Updating high ridership routes...')
+    update_high_ridership_routes(session)
     update_perfdocs(session)
     session.close()
 

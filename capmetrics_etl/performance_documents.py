@@ -170,19 +170,23 @@ def get_weekly_ridership(day_of_week, value):
 def update_productivity_document(session):
     productivity = OrderedDict()
     weeklies = session.query(models.WeeklyPerformance)\
+                      .filter_by(is_current=True)\
                       .order_by(desc(models.WeeklyPerformance.measurement_timestamp))\
-                      .order_by(asc(models.WeeklyPerformance.productivity))
+                      .order_by(asc(models.WeeklyPerformance.productivity))\
+                      .order_by(asc(models.WeeklyPerformance.ridership))
     for w in weeklies:
-        ts = w.measurement_timestamp.isoformat()
-        route_performance = {
-            'routeNumber': w.route.route_number,
-            'ridership': w.ridership,
-            'productivity': w.productivity
-        }
-        if ts in productivity:
-            productivity[ts].append(route_performance)
-        else:
-            productivity[ts] = [route_performance]
+        # exclude weekly without productivity data
+        if w.productivity:
+            ts = w.measurement_timestamp.isoformat()
+            route_performance = {
+                'routeNumber': w.route.route_number,
+                'ridership': w.ridership,
+                'productivity': w.productivity
+            }
+            if ts in productivity:
+                productivity[ts].append(route_performance)
+            else:
+                productivity[ts] = [route_performance]
     productivity_series = list()
     for timestamp, route_performances in productivity.items():
         productivity_series.append({'date': timestamp, 'performance': route_performances})
@@ -280,7 +284,10 @@ def update_top_routes(session):
         .all()
     top_routes = []
     for route in high_ridership_routes:
-        active_ridership = session.query(models.DailyRidership).filter_by(route_id=route.id, is_current=True)
+        # order_by puts 'weekday' at end to help with sort by weekday ridership
+        active_ridership = session.query(models.DailyRidership)\
+            .filter_by(route_id=route.id, is_current=True) \
+            .order_by(desc(models.DailyRidership.measurement_timestamp))
         for ridership in active_ridership:
             compendium = next((c for c in top_routes if c['routeNumber'] == str(route.route_number)), None)
             if compendium:

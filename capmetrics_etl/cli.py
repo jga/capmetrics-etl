@@ -24,7 +24,6 @@ def parse_capmetrics_configuration(config_parser):
 @click.option('--perfdocs', is_flag=True)
 @click.option('--test', is_flag=True)
 def etl(file, config, perfdocs, test):
-    print('v0.1.0-rc6')
     if not test:
         if not perfdocs:
             click.echo('Capmetrics Excel ETL starting...')
